@@ -78,6 +78,9 @@ class SwarmUIExtension {
         // Load available LoRA models
         this.loadLoraModels();
         
+        // Load available SD and ControlNet models
+        this.loadAIModels();
+        
         // Check ComfyUI availability
         this.checkComfyUIAvailability();
         
@@ -829,7 +832,28 @@ class SwarmUIExtension {
                 
                 loraSelect.innerHTML = '';
                 
+                // Add empty option first
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.textContent = 'None';
+                loraSelect.appendChild(emptyOption);
+                
+                // Add the "Déclic Silhouette Cinématographique" option first if available
+                const declicModel = models.find(model => model.name.includes('declic') || model.display_name.includes('Déclic'));
+                if (declicModel) {
+                    const declicOption = document.createElement('option');
+                    declicOption.value = declicModel.name;
+                    declicOption.textContent = 'Déclic Silhouette Cinématographique';
+                    declicOption.selected = true;
+                    loraSelect.appendChild(declicOption);
+                    this.selectedLoraModel = declicModel.name;
+                }
+                
+                // Add all other models
                 models.forEach(model => {
+                    // Skip if it's the Déclic model we already added
+                    if (declicModel && model.name === declicModel.name) return;
+                    
                     const option = document.createElement('option');
                     option.value = model.name;
                     option.textContent = model.display_name || model.name;
@@ -840,6 +864,48 @@ class SwarmUIExtension {
                 console.error('Error loading LoRA models:', error);
                 this.showNotification('error', 'Failed to load LoRA models');
             });
+    }
+    
+    // Load available SD and ControlNet models
+    loadAIModels() {
+        // Get available models from MCP protocol
+        const sdModels = this.mcpProtocol.getAvailableModels('stableDiffusion');
+        const controlNetModels = this.mcpProtocol.getAvailableModels('controlNet');
+        
+        // Update SD model select
+        const sdModelSelect = document.getElementById('swarmui-sd-model-select');
+        if (sdModelSelect && sdModels.length > 0) {
+            sdModelSelect.innerHTML = '';
+            
+            sdModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.name;
+                if (model.default) {
+                    option.selected = true;
+                    this.selectedSDModel = model.id;
+                }
+                sdModelSelect.appendChild(option);
+            });
+        }
+        
+        // Update ControlNet model select
+        const controlNetModelSelect = document.getElementById('swarmui-controlnet-model-select');
+        if (controlNetModelSelect && controlNetModels.length > 0) {
+            controlNetModelSelect.innerHTML = '';
+            
+            controlNetModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                option.textContent = model.name;
+                if (model.default) {
+                    option.selected = true;
+                    this.selectedControlNetModel = model.id;
+                }
+                controlNetModelSelect.appendChild(option);
+            });
+        }
+    }
     }
 
     // Upload storyboard
@@ -1028,13 +1094,555 @@ class SwarmUIExtension {
                         },
                         kling_api: {
                             enabled: this.useKlingAI
+                        },
+                        video_assembly: {
+                            transition: this.transitionType || 'crossfade'
                         }
                     }
                 });
             });
         }
     }
+    
+    // Open dialog to train new LoRA style
+    openTrainStyleDialog() {
+        // Create modal dialog
+        const dialog = document.createElement('div');
+        dialog.className = 'swarmui-modal';
+        dialog.innerHTML = `
+            <div class="swarmui-modal-content">
+                <span class="swarmui-modal-close">&times;</span>
+                <h3>Train New Style LoRA</h3>
+                <div class="swarmui-form">
+                    <div class="swarmui-input-container">
+                        <label for="swarmui-lora-name">Style Name:</label>
+                        <input type="text" id="swarmui-lora-name" placeholder="e.g. Style Labo, Style Napoléon" />
+                    </div>
+                    <div class="swarmui-input-container">
+                        <label for="swarmui-lora-description">Style Description:</label>
+                        <textarea id="swarmui-lora-description" rows="2" placeholder="Brief description of the style"></textarea>
+                    </div>
+                    <div class="swarmui-input-container">
+                        <label for="swarmui-lora-images">Reference Images:</label>
+                        <input type="file" id="swarmui-lora-images" multiple accept=".jpg,.jpeg,.png" />
+                        <small>Select 10-20 images that represent the style</small>
+                    </div>
+                    <div class="swarmui-input-container">
+                        <label for="swarmui-lora-steps">Training Steps:</label>
+                        <input type="range" id="swarmui-lora-steps" min="1000" max="10000" step="500" value="3000" />
+                        <span id="swarmui-lora-steps-value">3000</span>
+                    </div>
+                    <div class="swarmui-input-container">
+                        <label for="swarmui-lora-rank">LoRA Rank:</label>
+                        <select id="swarmui-lora-rank" class="swarmui-select">
+                            <option value="4">4 - Lightweight (less detail)</option>
+                            <option value="8">8 - Balanced</option>
+                            <option value="16" selected>16 - Detailed</option>
+                            <option value="32">32 - High Detail (larger file)</option>
+                        </select>
+                    </div>
+                    <div class="swarmui-buttons">
+                        <button id="swarmui-lora-cancel" class="swarmui-btn swarmui-btn-secondary">Cancel</button>
+                        <button id="swarmui-lora-train" class="swarmui-btn">Start Training</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(dialog);
+        
+        // Setup event listeners
+        const closeBtn = dialog.querySelector('.swarmui-modal-close');
+        const cancelBtn = dialog.querySelector('#swarmui-lora-cancel');
+        const trainBtn = dialog.querySelector('#swarmui-lora-train');
+        const stepsSlider = dialog.querySelector('#swarmui-lora-steps');
+        const stepsValue = dialog.querySelector('#swarmui-lora-steps-value');
+        
+        // Update steps value display
+        if (stepsSlider && stepsValue) {
+            stepsSlider.addEventListener('input', () => {
+                stepsValue.textContent = stepsSlider.value;
+            });
+        }
+        
+        // Close dialog
+        const closeDialog = () => {
+            document.body.removeChild(dialog);
+        };
+        
+        if (closeBtn) closeBtn.addEventListener('click', closeDialog);
+        if (cancelBtn) cancelBtn.addEventListener('click', closeDialog);
+        
+        // Handle training start
+        if (trainBtn) {
+            trainBtn.addEventListener('click', () => {
+                const nameInput = dialog.querySelector('#swarmui-lora-name');
+                const descInput = dialog.querySelector('#swarmui-lora-description');
+                const imagesInput = dialog.querySelector('#swarmui-lora-images');
+                const stepsInput = dialog.querySelector('#swarmui-lora-steps');
+                const rankInput = dialog.querySelector('#swarmui-lora-rank');
+                
+                if (!nameInput || !nameInput.value.trim()) {
+                    this.showNotification('error', 'Please enter a style name');
+                    return;
+                }
+                
+                if (!imagesInput || imagesInput.files.length < 5) {
+                    this.showNotification('error', 'Please select at least 5 reference images');
+                    return;
+                }
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('name', nameInput.value.trim());
+                formData.append('description', descInput ? descInput.value.trim() : '');
+                formData.append('steps', stepsInput ? stepsInput.value : '3000');
+                formData.append('rank', rankInput ? rankInput.value : '16');
+                
+                // Add all images
+                for (let i = 0; i < imagesInput.files.length; i++) {
+                    formData.append('images', imagesInput.files[i]);
+                }
+                
+                // Close dialog
+                closeDialog();
+                
+                // Show notification
+                this.showNotification('info', 'Starting LoRA training. This may take a while...');
+                
+                // Send training request
+                this.startLoraTraining(formData);
+            });
+        }
+    }
+    
+    // Start LoRA training
+    startLoraTraining(formData) {
+        fetch('/comfyui/train_lora', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                this.showNotification('success', 'LoRA training started successfully');
+                
+                // Poll for training status
+                this.pollLoraTrainingStatus(data.job_id);
+            } else {
+                this.showNotification('error', `Failed to start training: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error starting LoRA training:', error);
+            this.showNotification('error', `Failed to start training: ${error.message}`);
+        });
+    }
+    
+    // Poll for LoRA training status
+    pollLoraTrainingStatus(jobId) {
+        const statusCheck = setInterval(() => {
+            fetch(`/comfyui/check_lora_training?job_id=${jobId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed') {
+                        clearInterval(statusCheck);
+                        this.showNotification('success', 'LoRA training completed successfully');
+                        
+                        // Reload LoRA models
+                        this.loadLoraModels();
+                    } else if (data.status === 'failed') {
+                        clearInterval(statusCheck);
+                        this.showNotification('error', `LoRA training failed: ${data.error}`);
+                    } else if (data.status === 'progress') {
+                        // Update progress
+                        const progressElement = document.getElementById('swarmui-progress-status');
+                        if (progressElement) {
+                            progressElement.innerHTML = `<div class="swarmui-status-info">Training LoRA: ${data.progress}% complete</div>`;
+                        }
+                        
+                        // Update progress bar
+                        const progressBar = document.getElementById('swarmui-progress-bar');
+                        if (progressBar) {
+                            progressBar.style.width = `${data.progress}%`;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking LoRA training status:', error);
+                });
+        }, 5000); // Check every 5 seconds
+    }
 
+    // Start generation
+    startGeneration() {
+        if (this.isGenerating) return;
+        
+        if (!this.uploadedStoryboardPath) {
+            this.showNotification('error', 'Please upload a storyboard first');
+            return;
+        }
+        
+        this.isGenerating = true;
+        
+        // Update UI
+        const generateBtn = document.getElementById('swarmui-generate-btn');
+        if (generateBtn) {
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+        }
+        
+        const progressStatus = document.getElementById('swarmui-progress-status');
+        if (progressStatus) {
+            progressStatus.innerHTML = '<div class="swarmui-status-info">Starting generation...</div>';
+        }
+        
+        const progressBar = document.getElementById('swarmui-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = '0%';
+        }
+        
+        // Make sure all settings are updated before generation
+        this.updateSceneModels();
+        this.updateSceneStyles();
+        this.updateAnimationSettings();
+        this.updateCloudFallbackSettings();
+        
+        // Log MCP configuration for debugging
+        console.log('MCP Configuration for generation:', this.mcpProtocol.exportToJson());
+        
+        // Start generation
+        this.mcpProtocol.generateAllScenes(progress => {
+            // Update progress
+            if (progressBar) {
+                progressBar.style.width = `${progress.progress}%`;
+            }
+            
+            if (progressStatus) {
+                progressStatus.innerHTML = `<div class="swarmui-status-info">Generating scene ${progress.currentScene} of ${progress.totalScenes} (${progress.progress}%)</div>`;
+                
+                // Add model info to status
+                const scene = progress.scene;
+                if (scene && scene.generation) {
+                    const modelInfo = `<div class="swarmui-status-info small">Using: ${this.getModelDisplayName(scene.generation.model)} with ${this.getControlNetDisplayName(scene.generation.controlnet?.model)}</div>`;
+                    progressStatus.innerHTML += modelInfo;
+                    
+                    // Add LoRA info if used
+                    if (scene.generation.style && scene.generation.style.lora_model) {
+                        const loraInfo = `<div class="swarmui-status-info small">Style: ${scene.generation.style.lora_model} (strength: ${scene.generation.style.strength})</div>`;
+                        progressStatus.innerHTML += loraInfo;
+                    }
+                    
+                    // Add cloud fallback info if enabled
+                    if (scene.generation.fallback_cloud && scene.generation.fallback_cloud.enabled) {
+                        const cloudInfo = `<div class="swarmui-status-info small">Cloud fallback: ${scene.generation.fallback_cloud.provider}</div>`;
+                        progressStatus.innerHTML += cloudInfo;
+                    }
+                }
+            }
+            
+            // Display preview if available
+            if (progress.scene && progress.scene.output && progress.scene.output.image_url) {
+                const previewContainer = document.getElementById('swarmui-preview-container');
+                if (previewContainer) {
+                    previewContainer.innerHTML = `<img src="${progress.scene.output.image_url}" alt="Preview of scene ${progress.scene.scene_id}" />`;
+                }
+            }
+        })
+        .then(result => {
+            this.isGenerating = false;
+            
+            if (result.success) {
+                // Update UI
+                if (progressStatus) {
+                    progressStatus.innerHTML = '<div class="swarmui-status-success">Generation completed successfully</div>';
+                }
+                
+                if (generateBtn) {
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = 'Generate Images';
+                }
+                
+                // Enable create video button
+                const createVideoBtn = document.getElementById('swarmui-create-video-btn');
+                if (createVideoBtn) {
+                    createVideoBtn.disabled = false;
+                }
+                
+                this.showNotification('success', 'Generation completed successfully');
+                
+                // Display generated images
+                this.displayGeneratedImages();
+            } else {
+                // Update UI
+                if (progressStatus) {
+                    progressStatus.innerHTML = `<div class="swarmui-status-error">Generation failed: ${result.error}</div>`;
+                }
+                
+                if (generateBtn) {
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = 'Generate Images';
+                }
+                
+                this.showNotification('error', `Generation failed: ${result.error}`);
+            }
+        })
+        .catch(error => {
+            this.isGenerating = false;
+            
+            // Update UI
+            if (progressStatus) {
+                progressStatus.innerHTML = `<div class="swarmui-status-error">Generation failed: ${error.message}</div>`;
+            }
+            
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.textContent = 'Generate Images';
+            }
+            
+            console.error('Error generating scenes:', error);
+            this.showNotification('error', `Generation failed: ${error.message}`);
+        });
+    }
+    
+    // Create video
+    createVideo() {
+        if (this.isGenerating) return;
+        
+        if (!this.uploadedStoryboardPath) {
+            this.showNotification('error', 'Please upload a storyboard first');
+            return;
+        }
+        
+        // Check if images have been generated
+        if (!this.mcpProtocol.scenes || this.mcpProtocol.scenes.length === 0) {
+            this.showNotification('error', 'No scenes available');
+            return;
+        }
+        
+        const missingImages = this.mcpProtocol.scenes.filter(scene => !scene.output || !scene.output.final_image);
+        if (missingImages.length > 0) {
+            this.showNotification('error', 'Please generate images first');
+            return;
+        }
+        
+        this.isGenerating = true;
+        
+        // Update UI
+        const createVideoBtn = document.getElementById('swarmui-create-video-btn');
+        if (createVideoBtn) {
+            createVideoBtn.disabled = true;
+            createVideoBtn.textContent = 'Creating Video...';
+        }
+        
+        const progressStatus = document.getElementById('swarmui-progress-status');
+        if (progressStatus) {
+            progressStatus.innerHTML = '<div class="swarmui-status-info">Creating video...</div>';
+            
+            // Add animation info to status
+            let animationInfo = '<div class="swarmui-status-info small">Animation: ';
+            if (this.useAnimationDiff) {
+                animationInfo += 'AnimateDiff (local)';
+            }
+            if (this.useRunwayFallback) {
+                animationInfo += this.useAnimationDiff ? ', ' : '';
+                animationInfo += 'RunwayML Gen-2 (cloud)';
+            }
+            if (this.useKlingAI) {
+                animationInfo += (this.useAnimationDiff || this.useRunwayFallback) ? ', ' : '';
+                animationInfo += 'Kling AI / Veo2 (cloud)';
+            }
+            if (!this.useAnimationDiff && !this.useRunwayFallback && !this.useKlingAI) {
+                animationInfo += 'None (static images only)';
+            }
+            animationInfo += '</div>';
+            
+            progressStatus.innerHTML += animationInfo;
+            
+            // Add transition info
+            if (this.transitionType) {
+                const transitionInfo = `<div class="swarmui-status-info small">Transition: ${this.transitionType}</div>`;
+                progressStatus.innerHTML += transitionInfo;
+            }
+        }
+        
+        const progressBar = document.getElementById('swarmui-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = '0%';
+        }
+        
+        // Make sure animation settings are updated
+        this.updateAnimationSettings();
+        
+        // Create video
+        this.mcpProtocol.createVideo(this.useAnimation)
+            .then(result => {
+                this.isGenerating = false;
+                
+                if (result.success) {
+                    // Update UI
+                    if (progressStatus) {
+                        progressStatus.innerHTML = '<div class="swarmui-status-success">Video created successfully</div>';
+                    }
+                    
+                    if (createVideoBtn) {
+                        createVideoBtn.disabled = false;
+                        createVideoBtn.textContent = 'Create Video';
+                    }
+                    
+                    if (progressBar) {
+                        progressBar.style.width = '100%';
+                    }
+                    
+                    this.showNotification('success', 'Video created successfully');
+                    
+                    // Display video
+                    this.displayVideo(result.videoUrl);
+                } else {
+                    // Update UI
+                    if (progressStatus) {
+                        progressStatus.innerHTML = `<div class="swarmui-status-error">Video creation failed: ${result.error}</div>`;
+                    }
+                    
+                    if (createVideoBtn) {
+                        createVideoBtn.disabled = false;
+                        createVideoBtn.textContent = 'Create Video';
+                    }
+                    
+                    this.showNotification('error', `Video creation failed: ${result.error}`);
+                }
+            })
+            .catch(error => {
+                this.isGenerating = false;
+                
+                // Update UI
+                if (progressStatus) {
+                    progressStatus.innerHTML = `<div class="swarmui-status-error">Video creation failed: ${error.message}</div>`;
+                }
+                
+                if (createVideoBtn) {
+                    createVideoBtn.disabled = false;
+                    createVideoBtn.textContent = 'Create Video';
+                }
+                
+                console.error('Error creating video:', error);
+                this.showNotification('error', `Video creation failed: ${error.message}`);
+            });
+    }
+    
+    // Display generated images
+    displayGeneratedImages() {
+        if (!this.mcpProtocol.scenes || this.mcpProtocol.scenes.length === 0) return;
+        
+        const previewContainer = document.getElementById('swarmui-preview-container');
+        if (!previewContainer) return;
+        
+        // Clear previous content
+        previewContainer.innerHTML = '';
+        
+        // Create thumbnails for generated images
+        const thumbnailsContainer = document.createElement('div');
+        thumbnailsContainer.className = 'swarmui-thumbnails';
+        
+        this.mcpProtocol.scenes.forEach(scene => {
+            if (scene.output && scene.output.final_image) {
+                const thumbnail = document.createElement('div');
+                thumbnail.className = 'swarmui-thumbnail';
+                
+                const img = document.createElement('img');
+                img.src = scene.output.final_image;
+                img.alt = `Generated scene ${scene.scene_id}`;
+                thumbnail.appendChild(img);
+                
+                const text = document.createElement('div');
+                text.className = 'swarmui-thumbnail-text';
+                text.textContent = `Scene ${scene.scene_id}`;
+                thumbnail.appendChild(text);
+                
+                // Add click handler to show full image
+                thumbnail.addEventListener('click', () => {
+                    this.showFullImage(scene.output.final_image, `Scene ${scene.scene_id}`);
+                });
+                
+                thumbnailsContainer.appendChild(thumbnail);
+            }
+        });
+        
+        previewContainer.appendChild(thumbnailsContainer);
+    }
+    
+    // Display video
+    displayVideo(videoUrl) {
+        const previewContainer = document.getElementById('swarmui-preview-container');
+        if (!previewContainer || !videoUrl) return;
+        
+        // Clear previous content
+        previewContainer.innerHTML = '';
+        
+        // Create video element
+        const video = document.createElement('video');
+        video.src = videoUrl;
+        video.controls = true;
+        video.autoplay = false;
+        video.loop = true;
+        video.style.width = '100%';
+        video.style.maxHeight = '400px';
+        
+        previewContainer.appendChild(video);
+        
+        // Add download button
+        const downloadBtn = document.createElement('a');
+        downloadBtn.href = videoUrl;
+        downloadBtn.download = 'storyboard_video.mp4';
+        downloadBtn.className = 'swarmui-btn';
+        downloadBtn.style.marginTop = '10px';
+        downloadBtn.textContent = 'Download Video';
+        
+        previewContainer.appendChild(downloadBtn);
+    }
+    
+    // Show full image in modal
+    showFullImage(imageUrl, title) {
+        const dialog = document.createElement('div');
+        dialog.className = 'swarmui-modal';
+        dialog.innerHTML = `
+            <div class="swarmui-modal-content" style="max-width: 90%; width: auto;">
+                <span class="swarmui-modal-close">&times;</span>
+                <h3>${title || 'Generated Image'}</h3>
+                <img src="${imageUrl}" alt="${title || 'Generated Image'}" style="max-width: 100%; max-height: 80vh;" />
+            </div>
+        `;
+        document.body.appendChild(dialog);
+        
+        // Setup close button
+        const closeBtn = dialog.querySelector('.swarmui-modal-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                document.body.removeChild(dialog);
+            });
+        }
+        
+        // Close on click outside
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                document.body.removeChild(dialog);
+            }
+        });
+    }
+    
+    // Get display name for SD model
+    getModelDisplayName(modelId) {
+        const sdModels = this.mcpProtocol.getAvailableModels('stableDiffusion');
+        const model = sdModels.find(m => m.id === modelId);
+        return model ? model.name : modelId;
+    }
+    
+    // Get display name for ControlNet model
+    getControlNetDisplayName(modelId) {
+        const controlNetModels = this.mcpProtocol.getAvailableModels('controlNet');
+        const model = controlNetModels.find(m => m.id === modelId);
+        return model ? model.name : modelId;
+    }
+    
     // Open scene editor
     openSceneEditor(scene) {
         // Create modal dialog
