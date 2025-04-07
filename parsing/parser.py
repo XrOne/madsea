@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 import re
 import shutil
+import hashlib # Added for cache key generation
 
 import fitz  # PyMuPDF
 import pdfplumber
@@ -31,15 +32,17 @@ logger = logging.getLogger(__name__)
 class StoryboardParser:
     """Parser for extracting scenes from storyboard PDFs or image sets"""
 
-    def __init__(self, config):
+    def __init__(self, config, cache_manager=None):
         """
         Initialize the storyboard parser
         
         Args:
             config (dict): Configuration dictionary
+            cache_manager (CacheManager, optional): Cache manager instance.
         """
         self.config = config
-        self.temp_dir = Path(config.get("temp_dir", "temp"))
+        self.cache_manager = cache_manager
+        self.temp_dir = Path(config.get("temp_dir", "temp")) / "parser"
         self.ocr_language = config.get("ocr_language", "eng")
         
         # Create temp directory if it doesn't exist
@@ -54,7 +57,7 @@ class StoryboardParser:
     
     def parse(self, storyboard_path):
         """
-        Parse storyboard and extract scenes
+        Parse storyboard and extract scenes. Uses cache if available.
         
         Args:
             storyboard_path (str): Path to storyboard PDF or directory of images
@@ -67,8 +70,35 @@ class StoryboardParser:
         if not storyboard_path.exists():
             raise FileNotFoundError(f"Storyboard not found: {storyboard_path}")
         
-        # Clear previous temp files
-        self._clear_temp_files()
+        # --- Cache Check ---
+        cache_key = None
+        if self.cache_manager:
+            try:
+                 # Create a key based on path and modification time
+                 file_mod_time = storyboard_path.stat().st_mtime if storyboard_path.is_file() else None
+                 # For directories, might need a more robust way to check for changes (hash of contents?)
+                 cache_key = self.cache_manager.generate_key(
+                     "parser_results",
+                     str(storyboard_path.resolve()), # Use absolute path
+                     file_mod_time,
+                     self.ocr_language # Include relevant config
+                 )
+                 cached_scenes = self.cache_manager.get(cache_key)
+                 if cached_scenes:
+                     # Validate that cached image paths still exist (or handle regeneration)
+                     # For simplicity, we assume cache is valid if found for now
+                     logger.info(f"Cache hit for parsing storyboard: {storyboard_path}")
+                     # Ensure temp dir exists even if cached
+                     os.makedirs(self.temp_dir, exist_ok=True)
+                     return cached_scenes
+            except Exception as e:
+                 logger.warning(f"Error checking or reading parser cache: {e}")
+        # --- End Cache Check ---
+
+        logger.info(f"Parsing storyboard (cache miss or disabled): {storyboard_path}")
+        # Clear previous temp files *only if not using cache* (or manage temp files better)
+        self._clear_temp_files() # Consider if temp files should be named based on cache key
+        os.makedirs(self.temp_dir, exist_ok=True) # Ensure temp dir exists after clearing
         
         # Process based on input type
         if storyboard_path.is_file() and storyboard_path.suffix.lower() == ".pdf":
@@ -81,6 +111,16 @@ class StoryboardParser:
             raise ValueError(f"Unsupported storyboard format: {storyboard_path}")
         
         logger.info(f"Extracted {len(scenes)} scenes from storyboard")
+
+        # --- Cache Store ---
+        if self.cache_manager and cache_key:
+             try:
+                 self.cache_manager.set(cache_key, scenes)
+                 logger.info(f"Parsing results cached for key: {cache_key}")
+             except Exception as e:
+                 logger.warning(f"Error writing parser results to cache: {e}")
+        # --- End Cache Store ---
+
         return scenes
     
     def _parse_pdf(self, pdf_path):
@@ -151,6 +191,7 @@ class StoryboardParser:
     def _extract_page_image(self, page, page_num):
         """
         Extract image from PDF page
+        Uses a unique name within the parser's temp directory.
         
         Args:
             page (fitz.Page): PDF page
@@ -159,11 +200,19 @@ class StoryboardParser:
         Returns:
             Path: Path to extracted image
         """
-        # Render page to image
-        pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72))
-        image_path = self.temp_dir / f"scene_{page_num:04d}.png"
-        pix.save(str(image_path))
-        return image_path
+        # Use a more specific temp path if multiple parsers run concurrently
+        # For now, simple sequential naming within the instance's temp dir
+        image_filename = f"pdf_page_{page_num:04d}.png"
+        image_path = self.temp_dir / image_filename
+        try:
+            # Render page to image
+            pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72)) # Higher DPI
+            pix.save(str(image_path))
+            logger.debug(f"Extracted image for page {page_num} to {image_path}")
+            return image_path
+        except Exception as e:
+            logger.error(f"Failed to extract image for page {page_num}: {e}")
+            return None # Return None if extraction fails
     
     def _parse_image_directory(self, dir_path):
         """
@@ -183,9 +232,14 @@ class StoryboardParser:
                       if f.is_file() and f.suffix.lower() in image_extensions]
         
         for i, img_path in enumerate(image_files):
-            # Copy image to temp directory
-            temp_img_path = self.temp_dir / f"scene_{i:04d}{img_path.suffix}"
-            shutil.copy2(img_path, temp_img_path)
+            # Copy image to temp directory with a unique name
+            temp_img_filename = f"dir_img_{i:04d}{img_path.suffix}"
+            temp_img_path = self.temp_dir / temp_img_filename
+            try:
+                shutil.copy2(img_path, temp_img_path)
+            except Exception as e:
+                logger.error(f"Failed to copy image {img_path} to temp dir: {e}")
+                continue # Skip this image
             
             # Extract text with OCR
             text = self._extract_text_with_ocr(temp_img_path)
@@ -269,13 +323,13 @@ class StoryboardParser:
         return text.strip()
     
     def _clear_temp_files(self):
-        """
-        Clear temporary files from previous runs
-        """
-        # Remove and recreate temp directory
+        """Removes files created by this parser instance in its temp subdir."""
         if self.temp_dir.exists():
-            for file in self.temp_dir.glob("scene_*"):
-                try:
-                    file.unlink()
-                except Exception as e:
-                    logger.warning(f"Could not delete temp file {file}: {e}")
+            logger.debug(f"Clearing temp parser directory: {self.temp_dir}")
+            try:
+                # Remove the specific parser temp dir, not the root temp dir
+                shutil.rmtree(self.temp_dir)
+            except Exception as e:
+                logger.warning(f"Could not clear temp directory {self.temp_dir}: {e}")
+        # Recreate the directory after clearing
+        # os.makedirs(self.temp_dir, exist_ok=True) # Recreated in parse() if needed

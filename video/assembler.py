@@ -23,6 +23,10 @@ import time
 import numpy as np
 import cv2
 from PIL import Image
+import hashlib
+
+# Import managers
+from utils.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +34,19 @@ logger = logging.getLogger(__name__)
 class VideoAssembler:
     """Assembles generated images into a video sequence"""
 
-    def __init__(self, config):
+    def __init__(self, config, cache_manager: CacheManager = None):
         """
         Initialize the video assembler
         
         Args:
             config (dict): Configuration dictionary
+            cache_manager (CacheManager, optional): Cache manager instance.
         """
         self.config = config
+        self.cache_manager = cache_manager
         self.temp_dir = Path(config.get("temp_dir", "temp")) / "video"
-        self.output_dir = Path(os.path.dirname(config.get("output_path", "output/output.mp4")))
+        self.output_path_config = Path(config.get("output_path", "output/output.mp4"))
+        self.output_dir = self.output_path_config.parent
         self.scene_duration = config.get("scene_duration", 3.0)  # seconds
         self.transition_duration = config.get("transition_duration", 1.0)  # seconds
         self.fps = config.get("fps", 24)
@@ -76,7 +83,7 @@ class VideoAssembler:
     
     def create_video(self, image_paths, scenes=None):
         """
-        Create a video from the generated images
+        Create a video from the generated images. Uses cache if available.
         
         Args:
             image_paths (list): List of paths to generated images
@@ -85,9 +92,48 @@ class VideoAssembler:
         Returns:
             str: Path to the output video
         """
+        if not image_paths:
+            logger.error("No image paths provided for video assembly.")
+            return None
+        
+        # --- Cache Check ---
+        cache_key = None
+        final_output_path = self.output_path_config # Use path from config
+        
+        if self.cache_manager:
+            try:
+                # Create a key based on image hashes and config parameters
+                image_hashes = [self._get_file_hash(p) for p in image_paths if Path(p).exists()]
+                scene_texts_hash = hashlib.sha256(json.dumps(scenes, sort_keys=True).encode()).hexdigest() if scenes else "no_scenes"
+                
+                cache_key = self.cache_manager.generate_key(
+                    "assembled_video",
+                    image_hashes,
+                    scene_texts_hash,
+                    self.scene_duration,
+                    self.transition_duration,
+                    self.fps,
+                    tuple(self.resolution), # Needs to be hashable
+                    self.use_animation,
+                    # Add other relevant config options that affect output
+                )
+                cached_video_path = self.cache_manager.get(cache_key)
+                if cached_video_path and Path(cached_video_path).exists():
+                    logger.info(f"Cache hit for video assembly. Using cached video: {cached_video_path}")
+                    # Ensure the final output path matches the cached one or copy it
+                    if str(Path(cached_video_path).resolve()) != str(final_output_path.resolve()):
+                        logger.info(f"Copying cached video to final destination: {final_output_path}")
+                        shutil.copy2(cached_video_path, final_output_path)
+                    return str(final_output_path)
+            except Exception as e:
+                logger.warning(f"Error checking or reading video assembly cache: {e}")
+        # --- End Cache Check ---
+        
+        logger.info("Assembling video (cache miss or disabled)...")
         try:
             # Clear previous temp files
             self._clear_temp_files()
+            os.makedirs(self.temp_dir, exist_ok=True) # Ensure temp dir exists
             
             # Prepare frames for each scene
             logger.info("Preparing frames for video assembly")
@@ -101,16 +147,58 @@ class VideoAssembler:
                 frame_paths = self._create_transition_frames(image_paths)
             
             # Assemble frames into video
-            output_path = self._assemble_video(frame_paths)
+            # Assemble to a temporary path first before potentially caching
+            temp_video_output = self.temp_dir / f"temp_{final_output_path.stem}.mp4"
+            assembled_video_path = self._assemble_video(frame_paths, temp_video_output)
+            if not assembled_video_path:
+                raise ValueError("Video assembly using ffmpeg failed.")
             
             # Add text overlays if scenes data is provided
-            if scenes and output_path:
-                output_path = self._add_text_overlays(output_path, scenes)
+            if scenes:
+                # This might modify the video file, so do it before caching/moving
+                final_video_path_step = self._add_text_overlays(assembled_video_path, scenes)
+                if not final_video_path_step:
+                    logger.warning("Failed to add text overlays, returning video without text.")
+                    final_video_path_step = assembled_video_path # Use the non-overlayed video
+            else:
+                final_video_path_step = assembled_video_path
             
-            return output_path
+            # Move final video to target location
+            shutil.move(final_video_path_step, final_output_path)
+            logger.info(f"Video successfully assembled and moved to: {final_output_path}")
+            
+            # --- Cache Store ---
+            if self.cache_manager and cache_key:
+                try:
+                    # Cache the path to the final video file
+                    self.cache_manager.set(cache_key, str(final_output_path))
+                    logger.info(f"Cached assembled video path for key: {cache_key}")
+                except Exception as e:
+                    logger.warning(f"Error writing assembled video path to cache: {e}")
+            # --- End Cache Store ---
+            
+            return str(final_output_path)
         except Exception as e:
-            logger.error(f"Error creating video: {e}")
+            logger.error(f"Error creating video: {e}", exc_info=True)
             return self._create_fallback_video(image_paths)
+        finally:
+            # Clean up temp frame files regardless of success/failure/cache
+            self._clear_temp_files()
+    
+    def _get_file_hash(self, file_path):
+        """Calculates SHA256 hash of a file."""
+        hasher = hashlib.sha256()
+        try:
+            with open(file_path, 'rb') as f:
+                while chunk := f.read(8192):
+                    hasher.update(chunk)
+            return hasher.hexdigest()
+        except FileNotFoundError:
+            logger.warning(f"File not found for hashing: {file_path}")
+            return None
+        except Exception as e:
+            logger.error(f"Error hashing file {file_path}: {e}")
+            return None
     
     def _create_transition_frames(self, image_paths):
         """
@@ -287,67 +375,84 @@ class VideoAssembler:
         logger.warning("AnimateDiff model not available, using simple transitions instead")
         return False
     
-    def _assemble_video(self, frame_paths):
+    def _assemble_video(self, frame_paths, output_video_path):
         """
         Assemble frames into a video using ffmpeg
         
         Args:
-            frame_paths (list): List of paths to frames
+            frame_paths (list): List of paths to generated frames
+            output_video_path (Path): Path to save the output video
             
         Returns:
-            str: Path to the output video
+            str or None: Path to the output video or None on failure
         """
         if not frame_paths:
-            logger.error("No frames to assemble")
+            logger.error("No frames provided for video assembly")
             return None
         
+        logger.info(f"Assembling {len(frame_paths)} frames into video: {output_video_path}")
+        
+        # Create a temporary file listing the frames for ffmpeg
+        list_file_path = self.temp_dir / "framelist.txt"
+        with open(list_file_path, "w") as f:
+            for frame_path in frame_paths:
+                # Ensure paths are formatted correctly for ffmpeg
+                # Use forward slashes, escape special characters if needed
+                formatted_path = str(frame_path.resolve()).replace("\\", "/")
+                f.write(f"file '{formatted_path}'\n")
+                # Assuming duration based on FPS
+                f.write(f"duration {1.0/self.fps:.6f}\n")
+        
+        # Add the last frame again to ensure the list is properly terminated
+        last_frame_path = str(frame_paths[-1].resolve()).replace("\\", "/")
+        with open(list_file_path, "a") as f:
+            f.write(f"file '{last_frame_path}'\n")
+        
+        # Construct ffmpeg command
+        # Using concat demuxer for precise frame control
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",  # Overwrite output file if exists
+            "-f", "concat",
+            "-safe", "0", # Allow absolute paths in list file
+            "-i", str(list_file_path),
+            "-vf", f"fps={self.fps},scale={self.resolution[0]}:{self.resolution[1]}:flags=lanczos",
+            "-c:v", "libx264", # Video codec
+            "-preset", "medium", # Encoding speed vs compression
+            "-crf", "23", # Constant Rate Factor (lower value = better quality, larger file)
+            "-pix_fmt", "yuv420p", # Pixel format for compatibility
+            str(output_video_path)
+        ]
+        
+        logger.debug(f"Running ffmpeg command: {' '.join(ffmpeg_cmd)}")
+        
         try:
-            # Create output path
-            output_path = Path(self.config.get("output_path", "output/output.mp4"))
-            os.makedirs(output_path.parent, exist_ok=True)
-            
-            # Create frame list file for ffmpeg
-            frame_list_path = self.temp_dir / "frames.txt"
-            with open(frame_list_path, 'w') as f:
-                for frame_path in frame_paths:
-                    f.write(f"file '{frame_path}'\n")
-            
-            # Assemble video using ffmpeg
-            cmd = [
-                "ffmpeg",
-                "-y",  # Overwrite output file if it exists
-                "-r", str(self.fps),  # Frame rate
-                "-f", "concat",  # Concatenate frames
-                "-safe", "0",  # Don't require safe filenames
-                "-i", str(frame_list_path),  # Input file list
-                "-c:v", "libx264",  # Codec
-                "-pix_fmt", "yuv420p",  # Pixel format
-                "-crf", "23",  # Quality (lower is better)
-                "-preset", "medium",  # Encoding speed/quality tradeoff
-                str(output_path)  # Output path
-            ]
-            
-            logger.info(f"Assembling video with ffmpeg: {' '.join(cmd)}")
-            
-            # Run ffmpeg
             result = subprocess.run(
-                cmd,
+                ffmpeg_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                check=False
+                check=True # Raise exception on non-zero exit code
             )
-            
-            if result.returncode != 0:
-                logger.error(f"ffmpeg error: {result.stderr}")
-                return None
-            
-            logger.info(f"Video assembled successfully: {output_path}")
-            return str(output_path)
-        except Exception as e:
-            logger.error(f"Error assembling video: {e}")
+            logger.info(f"ffmpeg finished successfully. Output: {output_video_path}")
+            logger.debug(f"ffmpeg stdout:\n{result.stdout}")
+            logger.debug(f"ffmpeg stderr:\n{result.stderr}")
+            return str(output_video_path)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ffmpeg command failed with exit code {e.returncode}")
+            logger.error(f"ffmpeg stderr:\n{e.stderr}")
             return None
-    
+        except FileNotFoundError:
+            logger.error("ffmpeg command not found. Ensure ffmpeg is installed and in PATH.")
+            return None
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during ffmpeg execution: {e}")
+            return None
+        finally:
+            # Clean up the list file
+            if list_file_path.exists():
+                try: os.remove(list_file_path) except OSError:
+        
     def _add_text_overlays(self, video_path, scenes):
         """
         Add text overlays to the video
@@ -373,12 +478,12 @@ class VideoAssembler:
                 "ffmpeg",
                 "-y",  # Overwrite output file if it exists
                 "-i", str(input_path),  # Input video
-                "-vf", f"subtitles={subtitle_path}",  # Add subtitles
-                "-c:a", "copy",  # Copy audio stream
+                "-vf", f"subtitles={str(subtitle_path).replace(':', '\\:').replace('\\', '/')}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff&'", # Basic style
+                "-c:a", "copy",  # Copy audio stream if present
                 str(output_path)  # Output path
             ]
             
-            logger.info(f"Adding text overlays with ffmpeg: {' '.join(cmd)}")
+            logger.info(f"Running ffmpeg for subtitles: {' '.join(cmd)}")
             
             # Run ffmpeg
             result = subprocess.run(
@@ -386,18 +491,35 @@ class VideoAssembler:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                check=False
+                check=True
             )
             
-            if result.returncode != 0:
-                logger.error(f"ffmpeg error: {result.stderr}")
-                return video_path
+            logger.info(f"Subtitles added successfully. Output: {output_path}")
+            logger.debug(f"ffmpeg stdout:\n{result.stdout}")
+            logger.debug(f"ffmpeg stderr:\n{result.stderr}")
             
-            logger.info(f"Text overlays added successfully: {output_path}")
+            # Clean up subtitle file
+            if subtitle_path.exists():
+                try: os.remove(subtitle_path) except OSError:
+            
+            # Return the path to the new video with overlays
             return str(output_path)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ffmpeg subtitles command failed with exit code {e.returncode}")
+            logger.error(f"ffmpeg stderr:\n{e.stderr}")
+            if subtitle_path.exists():
+                try: os.remove(subtitle_path) except OSError:
+            return None # Return None on failure
+        except FileNotFoundError:
+            logger.error("ffmpeg command not found. Ensure ffmpeg is installed and in PATH.")
+            if subtitle_path.exists():
+                try: os.remove(subtitle_path) except OSError:
+            return None
         except Exception as e:
-            logger.error(f"Error adding text overlays: {e}")
-            return video_path
+            logger.error(f"An unexpected error occurred during subtitle overlay: {e}")
+            if subtitle_path.exists():
+                try: os.remove(subtitle_path) except OSError:
+            return None
     
     def _create_subtitle_file(self, subtitle_path, scenes):
         """
@@ -463,99 +585,77 @@ class VideoAssembler:
             str: Path to the output video
         """
         try:
-            # Create output path
-            output_path = Path(self.config.get("output_path", "output/output.mp4"))
-            os.makedirs(output_path.parent, exist_ok=True)
-            
-            # Create a simple slideshow with ffmpeg
-            cmd = [
-                "ffmpeg",
-                "-y",  # Overwrite output file if it exists
-                "-framerate", "1/3",  # 3 seconds per image
-                "-pattern_type", "glob",  # Use glob pattern for input
-                "-i", f"{os.path.dirname(image_paths[0])}/scene_*_generated.png",  # Input pattern
-                "-vf", f"scale={self.resolution[0]}:{self.resolution[1]}",  # Scale to target resolution
-                "-c:v", "libx264",  # Codec
-                "-pix_fmt", "yuv420p",  # Pixel format
-                "-r", "30",  # Output frame rate
-                str(output_path)  # Output path
-            ]
-            
-            logger.info(f"Creating fallback video with ffmpeg: {' '.join(cmd)}")
-            
-            # Run ffmpeg
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"ffmpeg error: {result.stderr}")
-                
-                # Try an even simpler approach
-                return self._create_simple_slideshow(image_paths, output_path)
-            
-            logger.info(f"Fallback video created successfully: {output_path}")
-            return str(output_path)
+            # Assemble a very simple slideshow as fallback
+            fallback_path = self.output_dir / f"{self.output_path_config.stem}_fallback.mp4"
+            logger.warning(f"Creating a simple fallback slideshow at: {fallback_path}")
+            return self._create_simple_slideshow(image_paths, fallback_path)
         except Exception as e:
             logger.error(f"Error creating fallback video: {e}")
             return None
     
     def _create_simple_slideshow(self, image_paths, output_path):
         """
-        Create a very simple slideshow using OpenCV
+        Create a simple slideshow video using ffmpeg
         
         Args:
-            image_paths (list): List of paths to generated images
+            image_paths (list): List of paths to images
             output_path (Path): Path to save the output video
             
         Returns:
-            str: Path to the output video
+            str or None: Path to the output video or None on failure
         """
+        if not image_paths:
+            return None
+        
+        # Create input list file for ffmpeg (image per second)
+        list_file_path = self.temp_dir / "fallback_framelist.txt"
+        with open(list_file_path, "w") as f:
+            for img_path in image_paths:
+                if Path(img_path).exists():
+                    formatted_path = str(Path(img_path).resolve()).replace("\\", "/")
+                    f.write(f"file '{formatted_path}'\n")
+                    f.write(f"duration 1.0\n") # Simple 1 second per image
+        
+        # Add last image again
+        if Path(image_paths[-1]).exists():
+            last_frame_path = str(Path(image_paths[-1]).resolve()).replace("\\", "/")
+            with open(list_file_path, "a") as f:
+                f.write(f"file '{last_frame_path}'\n")
+        
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(list_file_path),
+            "-vf", f"fps={self.fps},scale={self.resolution[0]}:{self.resolution[1]}:flags=lanczos,format=yuv420p",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "28",
+            str(output_path)
+        ]
+        
+        logger.debug(f"Running ffmpeg for fallback slideshow: {' '.join(ffmpeg_cmd)}")
+        
         try:
-            # Create video writer
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            video = cv2.VideoWriter(
-                str(output_path),
-                fourcc,
-                self.fps,
-                (self.resolution[0], self.resolution[1])
-            )
-            
-            # Add each image to the video for a few seconds
-            for image_path in image_paths:
-                # Load and resize image
-                img = cv2.imread(image_path)
-                if img is None:
-                    logger.warning(f"Could not load image: {image_path}")
-                    continue
-                
-                img = cv2.resize(img, (self.resolution[0], self.resolution[1]))
-                
-                # Add image to video for scene_duration seconds
-                for _ in range(int(self.scene_duration * self.fps)):
-                    video.write(img)
-            
-            # Release video writer
-            video.release()
-            
-            logger.info(f"Simple slideshow created successfully: {output_path}")
+            result = subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            logger.info(f"Fallback slideshow created successfully: {output_path}")
             return str(output_path)
         except Exception as e:
-            logger.error(f"Error creating simple slideshow: {e}")
+            logger.error(f"Failed to create fallback slideshow: {e}")
+            if isinstance(e, subprocess.CalledProcessError):
+                logger.error(f"ffmpeg stderr: {e.stderr}")
             return None
+        finally:
+            if list_file_path.exists():
+                try: os.remove(list_file_path) except OSError:
     
     def _clear_temp_files(self):
-        """
-        Clear temporary files from previous runs
-        """
-        # Remove and recreate temp directory
+        """Removes files created by this assembler instance in its temp subdir."""
         if self.temp_dir.exists():
-            for file in self.temp_dir.glob("*"):
-                try:
-                    file.unlink()
-                except Exception as e:
-                    logger.warning(f"Could not delete temp file {file}: {e}")
+            logger.debug(f"Clearing temp video directory: {self.temp_dir}")
+            try:
+                # Be careful not to delete the main temp dir
+                shutil.rmtree(self.temp_dir)
+            except Exception as e:
+                logger.warning(f"Could not clear temp directory {self.temp_dir}: {e}")

@@ -838,12 +838,12 @@ class SwarmUIExtension {
                 emptyOption.textContent = 'None';
                 loraSelect.appendChild(emptyOption);
                 
-                // Add the "Déclic Silhouette Cinématographique" option first if available
-                const declicModel = models.find(model => model.name.includes('declic') || model.display_name.includes('Déclic'));
+                // Add the "Déclic Ombre Chinoise" option first if available
+                const declicModel = models.find(model => model.name === 'declic_ombre_chinoise' || model.name.includes('declic') || model.display_name.includes('Déclic'));
                 if (declicModel) {
                     const declicOption = document.createElement('option');
                     declicOption.value = declicModel.name;
-                    declicOption.textContent = 'Déclic Silhouette Cinématographique';
+                    declicOption.textContent = 'Déclic Ombre Chinoise';
                     declicOption.selected = true;
                     loraSelect.appendChild(declicOption);
                     this.selectedLoraModel = declicModel.name;
@@ -864,6 +864,11 @@ class SwarmUIExtension {
                 console.error('Error loading LoRA models:', error);
                 this.showNotification('error', 'Failed to load LoRA models');
             });
+            
+        // Trigger event for Déclic Ombre Chinoise style module
+        const event = new CustomEvent('swarmui_loaded');
+        window.dispatchEvent(event);
+    }
     }
     
     // Load available SD and ControlNet models

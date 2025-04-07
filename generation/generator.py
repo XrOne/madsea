@@ -17,11 +17,22 @@ import logging
 import time
 import base64
 import requests
+import asyncio
 from pathlib import Path
 from abc import ABC, abstractmethod
 from PIL import Image
 import numpy as np
 import cv2
+import hashlib
+import random
+import uuid
+import aiohttp
+
+# Import managers (assuming they are accessible via sys.path)
+from utils.api_manager import APIManager
+from utils.model_manager import ModelManager
+from utils.cache_manager import CacheManager
+from utils.security import SecurityManager
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +40,24 @@ logger = logging.getLogger(__name__)
 class ImageGenerator:
     """Main image generator class that orchestrates the generation process"""
 
-    def __init__(self, config, style_manager):
+    def __init__(self, config, style_manager, model_manager: ModelManager, api_manager: APIManager, cache_manager: CacheManager, security_manager: SecurityManager):
         """
         Initialize the image generator
         
         Args:
             config (dict): Configuration dictionary
             style_manager (StyleManager): Style manager instance
+            model_manager (ModelManager): Model manager instance
+            api_manager (APIManager): API manager instance
+            cache_manager (CacheManager): Cache manager instance
+            security_manager (SecurityManager): Security manager instance
         """
         self.config = config
         self.style_manager = style_manager
+        self.model_manager = model_manager
+        self.api_manager = api_manager
+        self.cache_manager = cache_manager
+        self.security_manager = security_manager
         self.output_dir = Path(config.get("temp_dir", "temp")) / "generated"
         self.resolution = config.get("resolution", [1024, 768])
         
@@ -48,45 +67,105 @@ class ImageGenerator:
         # Initialize the appropriate generator based on config
         if config.get("use_cloud", False):
             logger.info("Using cloud-based image generation")
-            self.generator = CloudGenerator(config)
+            self.generator = CloudGenerator(config, api_manager, security_manager, cache_manager)
         else:
             logger.info("Using local image generation")
-            self.generator = LocalGenerator(config)
+            self.generator = LocalGenerator(config, api_manager, model_manager, cache_manager)
     
-    def generate(self, image_path, text, style_name=None):
+    async def generate(self, image_path, text, style_name=None, scene_index=0):
         """
-        Generate an image based on the storyboard scene
+        Generate an image based on the storyboard scene. Uses cache.
         
         Args:
-            image_path (str): Path to the reference image
-            text (str): Text description of the scene
-            style_name (str, optional): Name of the style to apply
+            image_path (str): Path to the reference image (original from parser).
+            text (str): Text description of the scene.
+            style_name (str, optional): Name of the style to apply.
+            scene_index (int): Index of the scene for naming output.
             
         Returns:
-            str: Path to the generated image
+            str or None: Path to the generated image, or None on failure.
         """
         # Use specified style or default from config
         style_name = style_name or self.config.get("style", "default")
         
         # Get style parameters from style manager
         style_params = self.style_manager.get_style(style_name)
+        if not style_params:
+            logger.error(f"Style '{style_name}' not found.")
+            return None
+        
+        # --- Cache Check ---
+        cache_key = None
+        final_output_path = self.output_dir / f"scene_{scene_index:04d}_generated.png"
+        
+        if self.cache_manager:
+            try:
+                # Create a robust cache key
+                ref_img_hash = self._get_file_hash(image_path) if Path(image_path).exists() else None
+                cache_key = self.cache_manager.generate_key(
+                    "generated_image",
+                    ref_img_hash, # Use hash of reference image
+                    text,
+                    style_name,
+                    style_params, # Include style details
+                    self.resolution,
+                    self.config.get("use_cloud", False),
+                    # Potentially add model IDs used if deterministic
+                )
+                cached_result_path = self.cache_manager.get(cache_key)
+                if cached_result_path and Path(cached_result_path).exists():
+                    logger.info(f"Cache hit for scene {scene_index} ({style_name}). Using: {cached_result_path}")
+                    # Ensure the target output path exists by copying/linking?
+                    # For simplicity, assume cached path is usable directly or copy it
+                    if str(Path(cached_result_path).resolve()) != str(final_output_path.resolve()):
+                         shutil.copy2(cached_result_path, final_output_path)
+                    return str(final_output_path)
+            except Exception as e:
+                logger.warning(f"Error checking image generation cache: {e}")
+        # --- End Cache Check ---
+        
+        logger.info(f"Generating image for scene {scene_index} ({style_name}) - Cache miss or disabled.")
         
         # Prepare the reference image for ControlNet
-        processed_image = self._prepare_reference_image(image_path)
+        processed_image_path = self._prepare_reference_image(image_path)
+        if not processed_image_path:
+             logger.error(f"Failed to prepare reference image for scene {scene_index}: {image_path}")
+             return None
         
         # Enhance the prompt with style-specific text
         enhanced_prompt = self._enhance_prompt(text, style_params)
         
-        # Generate the image
-        output_path = self.generator.generate_image(
-            processed_image,
+        # Generate the image using the specific generator (now async)
+        generated_image_path = await self.generator.generate_image(
+            processed_image_path,
             enhanced_prompt,
             style_params,
-            self.output_dir / f"{Path(image_path).stem}_generated.png"
+            final_output_path # Pass the final desired output path
         )
         
-        logger.info(f"Generated image saved to: {output_path}")
-        return str(output_path)
+        if generated_image_path:
+            logger.info(f"Generated image for scene {scene_index} saved to: {generated_image_path}")
+            # --- Cache Store ---
+            if self.cache_manager and cache_key:
+                try:
+                    # Cache the path to the *final* generated image
+                    self.cache_manager.set(cache_key, str(generated_image_path))
+                    logger.info(f"Cached generated image path for key: {cache_key}")
+                except Exception as e:
+                    logger.warning(f"Error writing image generation result to cache: {e}")
+            # --- End Cache Store ---
+            return str(generated_image_path)
+        else:
+            logger.error(f"Image generation failed for scene {scene_index}.")
+            return None
+    
+    def _get_file_hash(self, file_path):
+         """ Calculates SHA256 hash of a file. """
+         hasher = hashlib.sha256()
+         with open(file_path, 'rb') as f:
+             while chunk := f.read(8192):
+                 hasher.update(chunk)
+         return hasher.hexdigest()
     
     def _prepare_reference_image(self, image_path):
         """
@@ -119,8 +198,8 @@ class ImageGenerator:
             # Draw edges on white background
             background[edges != 0] = 0
             
-            # Save processed image
-            processed_path = Path(image_path).parent / f"{Path(image_path).stem}_processed.png"
+            # Save processed image to a subfolder within the generator output dir?
+            processed_path = self.output_dir / f"{Path(image_path).stem}_processed.png"
             cv2.imwrite(str(processed_path), background)
             
             return str(processed_path)
@@ -156,44 +235,67 @@ class ImageGenerator:
 class BaseGenerator(ABC):
     """Abstract base class for image generators"""
     
-    def __init__(self, config):
+    def __init__(self, config, api_manager: APIManager, cache_manager: CacheManager, **kwargs):
         """
-        Initialize the generator
+        Initialize the base generator
         
         Args:
             config (dict): Configuration dictionary
+            api_manager (APIManager): API manager instance
+            cache_manager (CacheManager): Cache manager instance
+            **kwargs: Additional managers (like model_manager, security_manager)
         """
         self.config = config
+        self.api_manager = api_manager
+        self.cache_manager = cache_manager
         self.resolution = config.get("resolution", [1024, 768])
+        # Store other managers if passed
+        self.model_manager = kwargs.get('model_manager')
+        self.security_manager = kwargs.get('security_manager')
     
     @abstractmethod
-    def generate_image(self, reference_image, prompt, style_params, output_path):
+    async def generate_image(self, reference_image_path, prompt, style_params, output_path):
         """
         Generate an image based on the reference image and prompt
         
         Args:
-            reference_image (str): Path to the processed reference image
+            reference_image_path (str): Path to the processed reference image
             prompt (str): Text prompt for generation
             style_params (dict): Style parameters
             output_path (Path): Path to save the generated image
             
         Returns:
-            str: Path to the generated image
+            str or None: Path to the generated image or None on failure
         """
         pass
+
+    def _create_placeholder_image(self, output_path):
+        """ Creates a simple placeholder image if generation fails. """
+        try:
+            img = Image.new('RGB', (self.resolution[0], self.resolution[1]), color = 'darkgrey')
+            # TODO: Add text indicating failure?
+            img.save(output_path)
+            logger.warning(f"Generation failed, created placeholder image at: {output_path}")
+            return str(output_path)
+        except Exception as e:
+             logger.error(f"Failed to create placeholder image: {e}")
+             return None
 
 
 class LocalGenerator(BaseGenerator):
     """Local image generator using ComfyUI"""
     
-    def __init__(self, config):
+    def __init__(self, config, api_manager: APIManager, model_manager: ModelManager, cache_manager: CacheManager):
         """
         Initialize the local generator
         
         Args:
             config (dict): Configuration dictionary
+            api_manager (APIManager): API manager instance
+            model_manager (ModelManager): Model manager instance
+            cache_manager (CacheManager): Cache manager instance
         """
-        super().__init__(config)
+        super().__init__(config, api_manager=api_manager, cache_manager=cache_manager, model_manager=model_manager)
         self.comfyui_host = config.get("comfyui", {}).get("host", "127.0.0.1")
         self.comfyui_port = config.get("comfyui", {}).get("port", 8188)
         self.workflow_dir = Path(config.get("comfyui", {}).get("workflow_dir", "workflows"))
@@ -221,36 +323,54 @@ class LocalGenerator(BaseGenerator):
             logger.warning(f"Could not connect to ComfyUI: {e}")
             logger.warning("Make sure ComfyUI is running and accessible")
     
-    def generate_image(self, reference_image, prompt, style_params, output_path):
+    async def generate_image(self, reference_image_path, prompt, style_params, output_path):
         """
-        Generate an image using ComfyUI
+        Generate an image using ComfyUI via API Manager.
         
         Args:
-            reference_image (str): Path to the processed reference image
+            reference_image_path (str): Path to the processed reference image
             prompt (str): Text prompt for generation
             style_params (dict): Style parameters
             output_path (Path): Path to save the generated image
             
         Returns:
-            str: Path to the generated image
+            str or None: Path to the generated image or None on failure
         """
         try:
             # Load the appropriate workflow template
             workflow = self._load_workflow_template(style_params)
-            
-            # Update workflow with parameters
-            workflow = self._update_workflow_params(workflow, reference_image, prompt, style_params)
-            
-            # Submit workflow to ComfyUI
-            result = self._submit_workflow(workflow)
-            
-            # Wait for and download the result
-            image_path = self._get_workflow_result(result, output_path)
-            
-            return image_path
+            if not workflow:
+                 logger.error("Failed to load or create a workflow.")
+                 return self._create_placeholder_image(output_path)
+
+            # Update workflow with parameters (needs ModelManager)
+            workflow = self._update_workflow_params(workflow, reference_image_path, prompt, style_params)
+
+            # Submit workflow to ComfyUI using APIManager
+            logger.debug("Submitting workflow to ComfyUI...")
+            result_data = await self._submit_workflow(workflow)
+            if not result_data or 'prompt_id' not in result_data:
+                logger.error(f"Failed to submit workflow to ComfyUI or invalid response: {result_data}")
+                return self._create_placeholder_image(output_path)
+
+            prompt_id = result_data['prompt_id']
+            logger.info(f"Workflow submitted to ComfyUI. Prompt ID: {prompt_id}")
+
+            # Wait for and download the result using APIManager
+            image_data = await self._get_workflow_result(prompt_id)
+
+            if image_data:
+                 # Save the received image data
+                 with open(output_path, "wb") as f:
+                     f.write(image_data)
+                 logger.info(f"Image successfully generated by ComfyUI and saved to: {output_path}")
+                 return str(output_path)
+            else:
+                 logger.error(f"Failed to retrieve image result from ComfyUI for prompt ID: {prompt_id}")
+                 return self._create_placeholder_image(output_path)
+
         except Exception as e:
-            logger.error(f"Error generating image with ComfyUI: {e}")
-            # Return a placeholder image
+            logger.error(f"Error during local image generation with ComfyUI: {e}", exc_info=True)
             return self._create_placeholder_image(output_path)
     
     def _load_workflow_template(self, style_params):
@@ -366,13 +486,13 @@ class LocalGenerator(BaseGenerator):
         
         return workflow
     
-    def _update_workflow_params(self, workflow, reference_image, prompt, style_params):
+    def _update_workflow_params(self, workflow, reference_image_path, prompt, style_params):
         """
         Update workflow with parameters
         
         Args:
             workflow (dict): Workflow template
-            reference_image (str): Path to the processed reference image
+            reference_image_path (str): Path to the processed reference image
             prompt (str): Text prompt for generation
             style_params (dict): Style parameters
             
@@ -389,7 +509,7 @@ class LocalGenerator(BaseGenerator):
             
             # Find the image loader node and update it
             if node.get("class_type") == "LoadImage":
-                node["inputs"]["image"] = reference_image
+                node["inputs"]["image"] = reference_image_path
             
             # Update LoRA if specified in style parameters
             if node.get("class_type") == "LoraLoader" and "lora_name" in style_params:
@@ -398,255 +518,324 @@ class LocalGenerator(BaseGenerator):
         
         return workflow
     
-    def _submit_workflow(self, workflow):
+    async def _submit_workflow(self, workflow):
         """
-        Submit workflow to ComfyUI
+        Submit workflow to ComfyUI using APIManager
         
         Args:
-            workflow (dict): Workflow to submit
+            workflow (dict): Workflow dictionary
             
         Returns:
-            dict: Result from ComfyUI
+            dict or None: Response from ComfyUI or None on failure
         """
         try:
             # Submit workflow
-            response = requests.post(
-                f"{self.api_url}/prompt",
-                json={"prompt": workflow}
+            response = await self.api_manager.call_api(
+                "comfyui",
+                method="POST",
+                endpoint_suffix="/prompt",
+                data={"prompt": workflow}
             )
             
-            if response.status_code != 200:
-                raise Exception(f"ComfyUI returned status code {response.status_code}: {response.text}")
-            
-            result = response.json()
-            logger.info(f"Submitted workflow to ComfyUI, prompt ID: {result.get('prompt_id')}")
-            
-            return result
+            if response:
+                 logger.debug(f"ComfyUI submission response: {response}")
+                 return response
+            else:
+                 logger.error("Failed to submit workflow to ComfyUI.")
+                 return None
         except Exception as e:
             logger.error(f"Error submitting workflow to ComfyUI: {e}")
             raise
     
-    def _get_workflow_result(self, result, output_path):
+    async def _get_workflow_result(self, prompt_id, poll_interval=1, timeout=120):
         """
-        Wait for and download the result from ComfyUI
+        Wait for workflow completion and download the result using APIManager.
         
         Args:
-            result (dict): Result from ComfyUI
-            output_path (Path): Path to save the generated image
+            prompt_id (str): The ID of the submitted prompt.
+            poll_interval (int): Seconds between polling attempts.
+            timeout (int): Maximum seconds to wait for completion.
             
         Returns:
-            str: Path to the generated image
+            bytes or None: The generated image data as bytes, or None on failure/timeout.
         """
-        prompt_id = result.get("prompt_id")
-        if not prompt_id:
-            raise ValueError("No prompt ID in ComfyUI response")
-        
-        # Wait for the workflow to complete
-        max_wait_time = 300  # 5 minutes
         start_time = time.time()
-        
-        while time.time() - start_time < max_wait_time:
-            # Check if the workflow has completed
+        while time.time() - start_time < timeout:
             try:
-                response = requests.get(f"{self.api_url}/history/{prompt_id}")
-                if response.status_code == 200:
-                    history = response.json()
-                    if prompt_id in history and "outputs" in history[prompt_id]:
-                        # Find the image output node
-                        for node_id, node_output in history[prompt_id]["outputs"].items():
-                            if "images" in node_output:
-                                # Get the first image
-                                image_data = node_output["images"][0]
-                                image_filename = image_data["filename"]
-                                
-                                # Download the image
-                                image_url = f"http://{self.comfyui_host}:{self.comfyui_port}/view?filename={image_filename}"
-                                image_response = requests.get(image_url)
-                                
-                                if image_response.status_code == 200:
-                                    # Save the image
-                                    with open(output_path, "wb") as f:
-                                        f.write(image_response.content)
-                                    
-                                    logger.info(f"Downloaded generated image to {output_path}")
-                                    return str(output_path)
-                        
-                        # If we get here, no image was found in the output
-                        logger.warning("No image found in ComfyUI output")
-                        break
+                logger.debug(f"Polling ComfyUI history for prompt_id: {prompt_id}")
+                history_response = await self.api_manager.call_api(
+                    "comfyui",
+                    method="GET",
+                    endpoint_suffix=f"/history/{prompt_id}"
+                )
+
+                if history_response and prompt_id in history_response:
+                    prompt_history = history_response[prompt_id]
+                    logger.debug(f"History received: Keys={list(prompt_history.keys())}")
+
+                    # Check outputs - Structure depends on workflow's SaveImage node
+                    if "outputs" in prompt_history:
+                        outputs = prompt_history["outputs"]
+                        # Find the output node (e.g., the SaveImage node ID)
+                        # This requires knowing the output node ID from the workflow.
+                        # Let's assume the SaveImage node was ID "11" as in the default workflow
+                        output_node_id = "11" # Hardcoded for now, should be dynamic ideally
+
+                        if output_node_id in outputs and outputs[output_node_id].get("images"):
+                            image_info = outputs[output_node_id]["images"][0]
+                            filename = image_info.get("filename")
+                            subfolder = image_info.get("subfolder")
+                            img_type = image_info.get("type") # output or temp?
+
+                            if filename and img_type == 'output':
+                                logger.info(f"Workflow {prompt_id} completed. Output image: {filename}")
+                                # Download the image using /view endpoint
+                                image_data = await self.api_manager.call_api(
+                                    "comfyui",
+                                    method="GET",
+                                    endpoint_suffix="/view",
+                                    params={"filename": filename, "subfolder": subfolder, "type": img_type}
+                                    # APIManager needs to handle non-json response here (bytes)
+                                )
+                                if isinstance(image_data, bytes):
+                                     logger.info(f"Successfully downloaded image {filename}")
+                                     return image_data
+                                else:
+                                     logger.error(f"Failed to download image {filename} from ComfyUI /view endpoint. Response: {image_data}")
+                                     return None
+                            else:
+                                 logger.debug(f"Output node {output_node_id} found, but image data not yet ready or not final output.")
+                        else:
+                             logger.debug(f"Output node {output_node_id} not found in outputs or no images generated yet.")
+                    else:
+                         logger.debug(f"Prompt {prompt_id} still executing or history format unexpected.")
+
+                # Wait before polling again
+                await asyncio.sleep(poll_interval)
+
             except Exception as e:
-                logger.warning(f"Error checking ComfyUI history: {e}")
-            
-            # Wait before checking again
-            time.sleep(2)
-        
-        logger.error("Timed out waiting for ComfyUI to generate image")
-        return self._create_placeholder_image(output_path)
-    
-    def _create_placeholder_image(self, output_path):
-        """
-        Create a placeholder image when generation fails
-        
-        Args:
-            output_path (Path): Path to save the placeholder image
-            
-        Returns:
-            str: Path to the placeholder image
-        """
-        # Create a simple colored image with text
-        img = np.ones((self.resolution[1], self.resolution[0], 3), dtype=np.uint8) * 200  # Light gray
-        
-        # Add text
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img, "Image Generation Failed", (int(self.resolution[0]*0.1), int(self.resolution[1]*0.5)),
-                   font, 1.5, (0, 0, 0), 2, cv2.LINE_AA)
-        
-        # Save image
-        cv2.imwrite(str(output_path), img)
-        
-        return str(output_path)
+                logger.error(f"Error polling ComfyUI history: {e}")
+                await asyncio.sleep(poll_interval * 2) # Longer wait on error
+
+        logger.error(f"Timeout waiting for ComfyUI workflow {prompt_id} to complete after {timeout} seconds.")
+        return None
 
 
 class CloudGenerator(BaseGenerator):
     """Cloud-based image generator using external APIs"""
     
-    def __init__(self, config):
+    def __init__(self, config, api_manager: APIManager, security_manager: SecurityManager, cache_manager: CacheManager):
         """
         Initialize the cloud generator
         
         Args:
             config (dict): Configuration dictionary
+            api_manager (APIManager): API manager instance
+            security_manager (SecurityManager): Security manager instance
+            cache_manager (CacheManager): Cache manager instance
         """
-        super().__init__(config)
-        self.api_key = config.get("cloud_api_key", "")
-        self.api_provider = config.get("cloud_api_provider", "openai").lower()
-        
-        if not self.api_key:
-            logger.warning("No API key provided for cloud generation")
-    
-    def generate_image(self, reference_image, prompt, style_params, output_path):
+        super().__init__(config, api_manager=api_manager, cache_manager=cache_manager, security_manager=security_manager)
+        self.api_provider_config = config.get("cloud_providers", {}) # Store provider specific configs
+        self.default_provider = config.get("default_cloud_provider", "openai") # Default if not specified by style
+
+    async def generate_image(self, reference_image_path, prompt, style_params, output_path):
         """
-        Generate an image using a cloud API
+        Generate an image using a cloud API via API Manager.
         
         Args:
-            reference_image (str): Path to the processed reference image
+            reference_image_path (str): Path to the processed reference image
             prompt (str): Text prompt for generation
             style_params (dict): Style parameters
             output_path (Path): Path to save the generated image
             
         Returns:
-            str: Path to the generated image
+            str or None: Path to the generated image or None on failure
         """
+        provider = style_params.get("cloud_api_provider", self.default_provider).lower()
+        logger.info(f"Generating image using cloud provider: {provider}")
+
+        # Get API Key securely
+        # Assumes API keys are stored in config under 'api_keys_encrypted' or 'api_keys'
+        encrypted_key = self.config.get("api_keys_encrypted", {}).get(provider)
+        decrypted_key = None
+        if encrypted_key:
+             decrypted_key = self.security_manager.decrypt_string(encrypted_key)
+        if not decrypted_key:
+             decrypted_key = self.config.get("api_keys", {}).get(provider)
+
+        if not decrypted_key:
+            logger.error(f"API key for cloud provider '{provider}' not found or couldn't be decrypted.")
+            return self._create_placeholder_image(output_path)
+
+        # Register API with manager (it might already be registered from startup)
+        provider_conf = self.api_provider_config.get(provider, {})
+        api_endpoint = provider_conf.get("endpoint") # Get endpoint from config
+        if not api_endpoint:
+             logger.warning(f"API endpoint for provider '{provider}' not found in config. Using default/guess.")
+             # Add default endpoints for known providers if needed
+             if provider == "openai": api_endpoint = "https://api.openai.com/v1"
+             elif provider == "midjourney": api_endpoint = "PLACEHOLDER_MJ_API" # Requires actual API if available
+             else: api_endpoint = ""
+
+        self.api_manager.register_api(provider, api_key=decrypted_key, endpoint=api_endpoint)
+
         try:
-            # Choose the appropriate API based on provider
-            if self.api_provider == "openai":
-                image_data = self._generate_with_openai(reference_image, prompt, style_params)
-            elif self.api_provider == "midjourney":
-                image_data = self._generate_with_midjourney(reference_image, prompt, style_params)
+            image_data = None
+            # Choose the appropriate API call based on provider
+            if provider == "openai":
+                image_data = await self._generate_with_openai(reference_image_path, prompt, style_params)
+            elif provider == "midjourney":
+                image_data = await self._generate_with_midjourney(reference_image_path, prompt, style_params)
+            # Add elif for other providers (DALL-E 3, Stability, etc.)
             else:
-                logger.error(f"Unsupported cloud API provider: {self.api_provider}")
+                logger.error(f"Unsupported cloud API provider specified: {provider}")
                 return self._create_placeholder_image(output_path)
-            
-            # Save the image
-            with open(output_path, "wb") as f:
-                f.write(image_data)
-            
-            logger.info(f"Generated image saved to: {output_path}")
-            return str(output_path)
+
+            if image_data and isinstance(image_data, bytes):
+                # Save the image
+                with open(output_path, "wb") as f:
+                    f.write(image_data)
+                logger.info(f"Cloud generated image saved to: {output_path}")
+                return str(output_path)
+            else:
+                 logger.error(f"Cloud generation with {provider} failed or returned invalid data.")
+                 return self._create_placeholder_image(output_path)
+
         except Exception as e:
-            logger.error(f"Error generating image with cloud API: {e}")
+            logger.error(f"Error generating image with cloud API '{provider}': {e}", exc_info=True)
             return self._create_placeholder_image(output_path)
     
-    def _generate_with_openai(self, reference_image, prompt, style_params):
+    async def _generate_with_openai(self, reference_image_path, prompt, style_params):
         """
-        Generate an image using OpenAI's DALL-E API
+        Generate an image using OpenAI's DALL-E API (assuming DALL-E 2 Edit or DALL-E 3).
         
         Args:
-            reference_image (str): Path to the processed reference image
+            reference_image_path (str): Path to the processed reference image
             prompt (str): Text prompt for generation
             style_params (dict): Style parameters
             
         Returns:
-            bytes: Image data
+            bytes or None: Image data as bytes, or None on failure.
         """
         try:
-            import openai
-            
-            # Set API key
-            openai.api_key = self.api_key
-            
-            # Load reference image
-            with open(reference_image, "rb") as f:
-                reference_data = base64.b64encode(f.read()).decode("utf-8")
-            
-            # Call OpenAI API
-            response = openai.Image.create_edit(
-                image=reference_data,
-                prompt=prompt,
-                n=1,
-                size=f"{self.resolution[0]}x{self.resolution[1]}"
-            )
-            
-            # Get image URL
-            image_url = response["data"][0]["url"]
-            
-            # Download image
-            image_response = requests.get(image_url)
-            if image_response.status_code != 200:
-                raise Exception(f"Failed to download image from OpenAI: {image_response.status_code}")
-            
-            return image_response.content
+            # DALL-E 3 preferred, uses different endpoint and structure
+            # Check config or style_params for model version (e.g., dall-e-3)
+            model = style_params.get("openai_model", "dall-e-2") # Default to DALL-E 2
+            api_key = self.api_manager.api_keys.get("openai") # API key already registered
+
+            if not api_key:
+                 logger.error("OpenAI API key not available in APIManager.")
+                 return None
+
+            headers = {
+                 "Authorization": f"Bearer {api_key}",
+                 # Content-Type might be application/json or multipart/form-data depending on endpoint
+            }
+
+            if model == "dall-e-3":
+                 logger.info("Using OpenAI DALL-E 3 API")
+                 payload = {
+                     "model": "dall-e-3",
+                     "prompt": prompt, # DALL-E 3 typically uses just the prompt
+                     "n": 1,
+                     "size": f"{self.resolution[0]}x{self.resolution[1]}", # Check supported sizes
+                     "response_format": "b64_json" # Get image data directly
+                 }
+                 endpoint_suffix = "/images/generations"
+                 headers['Content-Type'] = 'application/json'
+                 response = await self.api_manager.call_api("openai", method="POST", endpoint_suffix=endpoint_suffix, data=payload, headers=headers)
+
+                 if response and response.get("data") and response["data"][0].get("b64_json"):
+                     b64_data = response["data"][0]["b64_json"]
+                     return base64.b64decode(b64_data)
+                 else:
+                      logger.error(f"OpenAI DALL-E 3 API call failed or returned unexpected data: {response}")
+                      return None
+
+            else: # Assume DALL-E 2 Image Edit endpoint
+                 logger.info("Using OpenAI DALL-E 2 Image Edit API")
+                 endpoint_suffix = "/images/edits"
+                 # Requires multipart/form-data
+                 # Need a way for APIManager or here to handle multipart uploads async
+                 # TODO: Implement async multipart upload similar to comfyui upload
+
+                 # Placeholder - This part needs rework for async multipart
+                 logger.warning("DALL-E 2 async multipart upload not fully implemented yet.")
+                 try:
+                     import openai # Use official lib as fallback TEMPORARILY? NO - stick to APIManager
+                     logger.error("Fallback to openai library is deprecated. Need async multipart in APIManager.")
+                     # Fallback simulation (REMOVE THIS LATER)
+                     # openai.api_key = api_key
+                     # with open(reference_image_path, "rb") as image_file:
+                     #     response = openai.Image.create_edit(
+                     #         image=image_file,
+                     #         prompt=prompt,
+                     #         n=1,
+                     #         size=f"{self.resolution[0]}x{self.resolution[1]}",
+                     #         response_format="b64_json"
+                     #     )
+                     # return base64.b64decode(response['data'][0]['b64_json'])
+                     return None # Return None until implemented
+                 except Exception as fallback_e:
+                      logger.error(f"Error during DALL-E 2 fallback attempt: {fallback_e}")
+                      return None
+
         except Exception as e:
-            logger.error(f"Error generating image with OpenAI: {e}")
-            raise
+            logger.error(f"Error generating image with OpenAI: {e}", exc_info=True)
+            return None
     
-    def _generate_with_midjourney(self, reference_image, prompt, style_params):
+    async def _generate_with_midjourney(self, reference_image_path, prompt, style_params):
         """
-        Generate an image using Midjourney API
+        Generate an image using a Midjourney API (if available).
+        Note: Midjourney does not have an official public API as of last check.
+              This assumes a hypothetical or third-party API exists and is configured.
         
         Args:
-            reference_image (str): Path to the processed reference image
+            reference_image_path (str): Path to the processed reference image
             prompt (str): Text prompt for generation
             style_params (dict): Style parameters
             
         Returns:
-            bytes: Image data
+            bytes or None: Image data as bytes, or None on failure.
         """
-        # Note: This is a placeholder as Midjourney doesn't have an official API
-        # In a real implementation, this would use a third-party Midjourney API service
-        logger.warning("Midjourney API is not implemented")
-        
-        # Create a placeholder image
-        img = np.ones((self.resolution[1], self.resolution[0], 3), dtype=np.uint8) * 200  # Light gray
-        
-        # Add text
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img, "Midjourney API Not Implemented", (int(self.resolution[0]*0.1), int(self.resolution[1]*0.5)),
-                   font, 1.5, (0, 0, 0), 2, cv2.LINE_AA)
-        
-        # Convert to bytes
-        _, buffer = cv2.imencode(".png", img)
-        return buffer.tobytes()
-    
-    def _create_placeholder_image(self, output_path):
-        """
-        Create a placeholder image when generation fails
-        
-        Args:
-            output_path (Path): Path to save the placeholder image
-            
-        Returns:
-            str: Path to the placeholder image
-        """
-        # Create a simple colored image with text
-        img = np.ones((self.resolution[1], self.resolution[0], 3), dtype=np.uint8) * 200  # Light gray
-        
-        # Add text
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(img, "Cloud Generation Failed", (int(self.resolution[0]*0.1), int(self.resolution[1]*0.5)),
-                   font, 1.5, (0, 0, 0), 2, cv2.LINE_AA)
-        
-        # Save image
-        cv2.imwrite(str(output_path), img)
-        
-        return str(output_path)
+        logger.warning("Midjourney API interaction is hypothetical or relies on unofficial APIs.")
+        provider = "midjourney"
+        api_key = self.api_manager.api_keys.get(provider)
+        if not api_key:
+            logger.error(f"API key for {provider} not found.")
+            return None
+
+        try:
+            # Construct payload based on the assumed Midjourney API structure
+            payload = {
+                "prompt": prompt,
+                # Add other MJ parameters from style_params: --ar, --style, --seed, image refs?
+                "aspect_ratio": f"{self.resolution[0]}:{self.resolution[1]}",
+                "image_weight": style_params.get("mj_iw", 0.5), # Example param
+                "seed": style_params.get("seed"),
+                 # Need to handle reference image upload/linking if API supports it
+            }
+            # Remove None values from payload
+            payload = {k: v for k, v in payload.items() if v is not None}
+
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            endpoint_suffix = "/imagine" # Hypothetical endpoint
+
+            response = await self.api_manager.call_api(provider, method="POST", endpoint_suffix=endpoint_suffix, data=payload, headers=headers)
+
+            if response and response.get("status") == "success" and response.get("image_url"):
+                 # Assuming API returns a URL to the generated image
+                 image_url = response["image_url"]
+                 logger.info(f"Midjourney task submitted, image URL: {image_url}")
+                 # Need to download the image from the URL
+                 # Use requests or aiohttp via APIManager?
+                 img_response = requests.get(image_url, timeout=60) # Simple sync download for now
+                 img_response.raise_for_status()
+                 return img_response.content
+            else:
+                 logger.error(f"Midjourney API call failed or returned unexpected data: {response}")
+                 return None
+
+        except Exception as e:
+            logger.error(f"Error generating image with Midjourney API: {e}", exc_info=True)
+            return None

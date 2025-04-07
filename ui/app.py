@@ -17,8 +17,10 @@ import logging
 import time
 import json
 import threading
+import asyncio
+import uuid
 from pathlib import Path
-from flask import Flask, request, render_template, jsonify, send_file, redirect, url_for
+from flask import Flask, request, render_template, jsonify, send_file, redirect, url_for, current_app
 from werkzeug.utils import secure_filename
 
 # Add the project root to the Python path
@@ -29,218 +31,421 @@ from generation.generator import ImageGenerator
 from styles.manager import StyleManager
 from video.assembler import VideoAssembler
 from utils.config import load_config, save_config
+from utils.api_manager import APIManager
+from utils.model_manager import ModelManager
+from utils.cache_manager import CacheManager
+from utils.security import SecurityManager
 
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max upload size
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['RESULT_FOLDER'] = 'results'
+app.config['UPLOAD_FOLDER'] = Path('uploads')
+app.config['RESULT_FOLDER'] = Path('results')
+app.config['PROJECTS_BASE_DIR'] = Path('projects') # Base directory for projects
 
-# Global variables for tracking generation progress
-generation_status = {
-    'running': False,
-    'progress': 0,
-    'total': 0,
-    'current_scene': 0,
-    'message': '',
-    'result_video': None,
-    'scenes': []
-}
+# Global dictionary to track running generation tasks
+# Key: task_id (str), Value: dict with status, progress, message, result_path, etc.
+background_tasks = {}
 
-# Global configuration
-config = None
-
-# Global component instances
-parser = None
-style_manager = None
-generator = None
-assembler = None
-
-
-def init_app(config_path=None):
-    """
-    Initialize the application components
-    
-    Args:
-        config_path (str, optional): Path to configuration file
-    """
-    global config, parser, style_manager, generator, assembler
-    
-    # Load configuration
-    config = load_config(config_path)
-    
-    # Create upload and result directories
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    os.makedirs(app.config['RESULT_FOLDER'], exist_ok=True)
-    
-    # Initialize components
-    parser = StoryboardParser(config)
-    style_manager = StyleManager(config)
-    generator = ImageGenerator(config, style_manager)
-    assembler = VideoAssembler(config)
-    
-    logger.info("Application initialized")
-
+@app.before_request
+def ensure_managers_initialized():
+    # This check ensures managers are available for every request
+    # It relies on start_web_app having populated app.config
+    required_managers = ['config', 'api_manager', 'model_manager', 'cache_manager', 'security_manager']
+    if not all(mgr in current_app.config for mgr in required_managers):
+        # This should ideally not happen if started via startup.py
+        logger.critical("Managers not initialized in Flask app config!")
+        # You might want to return an error response here
+        return jsonify({"error": "Application not properly initialized"}), 500
 
 @app.route('/')
 def index():
     """
     Render the main page
     """
-    # Get available styles
-    styles = style_manager.list_styles() if style_manager else []
-    
-    return render_template(
-        'index.html',
-        styles=styles,
-        status=generation_status,
-        config=config
-    )
-
-
-@app.route('/upload', methods=['POST'])
-def upload_storyboard():
-    """
-    Handle storyboard upload
-    """
-    if 'storyboard' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-    
-    file = request.files['storyboard']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    # Save the uploaded file
-    filename = secure_filename(file.filename)
-    upload_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(upload_path)
-    
-    return jsonify({
-        'success': True,
-        'filename': filename,
-        'path': upload_path
-    })
-
-
-@app.route('/generate', methods=['POST'])
-def generate():
-    """
-    Start the generation process
-    """
-    global generation_status
-    
-    # Check if generation is already running
-    if generation_status['running']:
-        return jsonify({'error': 'Generation already in progress'}), 400
-    
-    # Get parameters
-    data = request.json
-    storyboard_path = data.get('storyboard_path')
-    style_name = data.get('style', 'default')
-    use_cloud = data.get('use_cloud', False)
-    
-    # Validate parameters
-    if not storyboard_path or not os.path.exists(storyboard_path):
-        return jsonify({'error': 'Invalid storyboard path'}), 400
-    
-    # Update config
-    config['storyboard_path'] = storyboard_path
-    config['style'] = style_name
-    config['use_cloud'] = use_cloud
-    
-    # Start generation in a separate thread
-    generation_thread = threading.Thread(
-        target=run_generation,
-        args=(storyboard_path, style_name, use_cloud)
-    )
-    generation_thread.daemon = True
-    generation_thread.start()
-    
-    return jsonify({'success': True, 'message': 'Generation started'})
-
-
-def run_generation(storyboard_path, style_name, use_cloud):
-    """
-    Run the generation process in a separate thread
-    
-    Args:
-        storyboard_path (str): Path to the storyboard
-        style_name (str): Name of the style to apply
-        use_cloud (bool): Whether to use cloud resources
-    """
-    global generation_status
-    
     try:
-        # Update status
-        generation_status['running'] = True
-        generation_status['progress'] = 0
-        generation_status['message'] = 'Parsing storyboard...'
-        generation_status['result_video'] = None
-        generation_status['scenes'] = []
-        
+        style_manager = current_app.config['style_manager']
+        config = current_app.config['config']
+        # Get available styles
+        styles = style_manager.list_styles() if style_manager else []
+
+        # Get status of recent/running tasks (simplified view for index)
+        # Maybe show the latest task or a summary
+        latest_task_id = None
+        latest_task_status = {"running": False, "message": "Ready"} # Default
+        if background_tasks:
+             # Find the most recently started task (requires storing timestamp)
+             # Simple approach: just take the last one added (not reliable)
+             latest_task_id = list(background_tasks.keys())[-1] # Example: get latest ID
+             latest_task_status = background_tasks[latest_task_id]
+
+        # TODO: Add project listing/selection here
+        projects = list_projects()
+
+        return render_template(
+            'index.html',
+            styles=styles,
+            status=latest_task_status,
+            task_id=latest_task_id,
+            config=config,
+            projects=projects
+        )
+    except Exception as e:
+        logger.error(f"Error rendering index page: {e}", exc_info=True)
+        return f"An internal error occurred: {e}", 500
+
+
+# --- Project Management --- 
+def get_project_dir(project_name):
+    """ Returns the sanitized directory path for a project. """
+    if not project_name or '.' in project_name or '/' in project_name or '\\' in project_name:
+         raise ValueError("Invalid project name")
+    return app.config['PROJECTS_BASE_DIR'] / secure_filename(project_name)
+
+def list_projects():
+    """ Returns a list of existing project names. """
+    base_dir = app.config['PROJECTS_BASE_DIR']
+    projects = []
+    if base_dir.exists():
+        for item in base_dir.iterdir():
+            if item.is_dir():
+                 # Check for a marker file or config to confirm it's a project?
+                 projects.append({"name": item.name})
+    return projects
+
+@app.route('/projects', methods=['GET'])
+def get_projects():
+     return jsonify(list_projects())
+
+@app.route('/projects', methods=['POST'])
+def create_project():
+    data = request.json
+    project_name = data.get('name')
+    if not project_name:
+        return jsonify({"error": "Project name required"}), 400
+    try:
+        project_dir = get_project_dir(project_name)
+        if project_dir.exists():
+             return jsonify({"error": "Project already exists"}), 409
+
+        # Create project structure
+        os.makedirs(project_dir / 'uploads', exist_ok=True)
+        os.makedirs(project_dir / 'generated', exist_ok=True)
+        os.makedirs(project_dir / 'results', exist_ok=True)
+        os.makedirs(project_dir / 'temp', exist_ok=True)
+        # Create a default project config?
+        # with open(project_dir / 'project_config.yaml', 'w') as f:
+        #     yaml.dump({'created_at': time.time()}, f)
+
+        logger.info(f"Created project '{project_name}' at {project_dir}")
+        return jsonify({"success": True, "name": project_name, "path": str(project_dir)}), 201
+    except ValueError as e:
+         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+         logger.error(f"Error creating project '{project_name}': {e}", exc_info=True)
+         return jsonify({"error": "Failed to create project"}), 500
+
+# --- Uploads within Project Context --- 
+@app.route('/projects/<project_name>/upload', methods=['POST'])
+def upload_storyboard(project_name):
+    """
+    Handle storyboard upload for a specific project.
+    """
+    try:
+        project_dir = get_project_dir(project_name)
+        if not project_dir.exists():
+             return jsonify({"error": "Project not found"}), 404
+
+        upload_folder = project_dir / 'uploads'
+
+        if 'storyboard' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['storyboard']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        filename = secure_filename(file.filename)
+        upload_path = upload_folder / filename
+        file.save(upload_path)
+
+        logger.info(f"Uploaded '{filename}' to project '{project_name}'")
+        return jsonify({
+            'success': True,
+            'filename': filename,
+            'path': str(upload_path) # Return path relative to project?
+        })
+    except ValueError as e:
+         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+         logger.error(f"Error uploading to project '{project_name}': {e}", exc_info=True)
+         return jsonify({"error": "File upload failed"}), 500
+
+
+# Make generate async
+@app.route('/projects/<project_name>/generate', methods=['POST'])
+async def generate(project_name):
+    """
+    Start the generation process for a specific project.
+    """
+    global background_tasks
+
+    try:
+        project_dir = get_project_dir(project_name)
+        if not project_dir.exists():
+            return jsonify({"error": "Project not found"}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Get managers from app context
+    config = current_app.config['config']
+    api_manager = current_app.config['api_manager']
+    model_manager = current_app.config['model_manager']
+    cache_manager = current_app.config['cache_manager']
+    security_manager = current_app.config['security_manager']
+    style_manager = current_app.config['style_manager']
+    # Create component instances specific to this request/project if needed,
+    # or reuse if they are stateless and configured via managers.
+    # For now, assume they can be created here using config + managers
+    parser = StoryboardParser(config, cache_manager=cache_manager)
+    generator = ImageGenerator(config, style_manager, model_manager, api_manager, cache_manager, security_manager)
+    assembler = VideoAssembler(config, cache_manager=cache_manager)
+
+
+    # Get parameters from request
+    data = request.json
+    storyboard_filename = data.get('storyboard_filename') # Filename within project uploads
+    style_name = data.get('style', config.get("style", "default"))
+    use_cloud = data.get('use_cloud', config.get("use_cloud", False))
+    output_filename = data.get('output_filename', f"{project_name}_video_{int(time.time())}.mp4")
+
+    # Validate parameters
+    if not storyboard_filename:
+        return jsonify({'error': 'Storyboard filename required'}), 400
+
+    storyboard_path = project_dir / 'uploads' / secure_filename(storyboard_filename)
+    if not storyboard_path.exists():
+        return jsonify({'error': f'Storyboard file {storyboard_filename} not found in project {project_name}'}), 404
+
+    # --- Task Management --- 
+    task_id = str(uuid.uuid4())
+    background_tasks[task_id] = {
+        'status': 'queued',
+        'progress': 0,
+        'total': 0,
+        'current_scene': 0,
+        'message': 'Generation queued',
+        'result_video': None,
+        'scenes': [],
+        'project_name': project_name,
+        'start_time': time.time()
+    }
+
+    # Define project-specific paths for this task
+    project_config = config.copy() # Use a copy to avoid modifying global config
+    project_config["temp_dir"] = project_dir / 'temp'
+    project_config["output_path"] = project_dir / 'results' / secure_filename(output_filename)
+    project_config["style"] = style_name
+    project_config["use_cloud"] = use_cloud
+    # Ensure these paths exist
+    os.makedirs(project_config["temp_dir"], exist_ok=True)
+    os.makedirs(project_config["output_path"].parent, exist_ok=True)
+
+    logger.info(f"Starting generation task {task_id} for project '{project_name}'...")
+    # Start generation in background using asyncio
+    asyncio.create_task(run_generation_async(
+        task_id,
+        project_config,
+        parser, generator, assembler,
+        str(storyboard_path),
+        style_name
+    ))
+
+    return jsonify({'success': True, 'message': 'Generation started', 'task_id': task_id})
+
+# New async function to run generation
+async def run_generation_async(task_id, project_config, parser, generator, assembler, storyboard_path, style_name):
+    """
+    Run the generation process asynchronously.
+
+    Args:
+        task_id (str): Unique ID for this task.
+        project_config (dict): Configuration specific to this project run.
+        parser (StoryboardParser): Parser instance.
+        generator (ImageGenerator): Generator instance.
+        assembler (VideoAssembler): Assembler instance.
+        storyboard_path (str): Path to the storyboard.
+        style_name (str): Name of the style to apply.
+    """
+    global background_tasks
+    task_info = background_tasks[task_id]
+
+    try:
+        task_info['status'] = 'running'
+        task_info['message'] = 'Parsing storyboard...'
+        background_tasks[task_id] = task_info # Update global state
+
         # Parse storyboard
         scenes = parser.parse(storyboard_path)
-        generation_status['total'] = len(scenes)
-        generation_status['scenes'] = scenes
-        
-        # Generate images for each scene
-        generated_images = []
+        if not scenes:
+            raise ValueError("Storyboard parsing failed or returned no scenes.")
+
+        task_info['total'] = len(scenes)
+        task_info['scenes'] = scenes # Store parsed scene info (paths, text)
+        background_tasks[task_id] = task_info
+
+        # Generate images for each scene concurrently
+        generation_tasks = []
         for i, scene in enumerate(scenes):
-            generation_status['current_scene'] = i + 1
-            generation_status['progress'] = (i / len(scenes)) * 100
-            generation_status['message'] = f"Generating image for scene {i+1}/{len(scenes)}..."
-            
-            # Generate image
-            image = generator.generate(scene['image'], scene['text'], style_name)
-            generated_images.append(image)
-            
-            # Update scene with generated image
-            scene['generated_image'] = image
-        
+            task_info['current_scene'] = i + 1
+            task_info['progress'] = (i / len(scenes)) * 50 # Parsing + Generation = 100%
+            task_info['message'] = f"Generating image for scene {i+1}/{len(scenes)}..."
+            background_tasks[task_id] = task_info
+
+            # Schedule image generation task
+            generation_tasks.append(
+                generator.generate(scene['image'], scene['text'], style_name, scene_index=i)
+            )
+
+        # Wait for all image generations to complete
+        generated_image_paths = await asyncio.gather(*generation_tasks, return_exceptions=True)
+
+        # Process results, linking generated paths back to scenes
+        valid_image_paths = []
+        errors = []
+        for i, result in enumerate(generated_image_paths):
+            if isinstance(result, Exception):
+                logger.error(f"Error generating image for scene {i+1}: {result}")
+                errors.append(f"Scene {i+1}: {result}")
+                # Update scene status in task_info?
+                task_info['scenes'][i]['generated_image'] = None
+                task_info['scenes'][i]['error'] = str(result)
+            elif result is None:
+                 logger.error(f"Image generation returned None for scene {i+1}")
+                 errors.append(f"Scene {i+1}: Generation returned None")
+                 task_info['scenes'][i]['generated_image'] = None
+                 task_info['scenes'][i]['error'] = "Generation failed (returned None)"
+            else:
+                valid_image_paths.append(result)
+                task_info['scenes'][i]['generated_image'] = str(result) # Store path
+
+        task_info['message'] = f"Image generation complete. Errors: {len(errors)}/{len(scenes)}."
+        task_info['progress'] = 50
+        background_tasks[task_id] = task_info
+
+        if not valid_image_paths:
+            raise ValueError("No images were successfully generated.")
+
         # Assemble video
-        generation_status['message'] = "Assembling video..."
-        output_path = os.path.join(app.config['RESULT_FOLDER'], f"storyboard_video_{int(time.time())}.mp4")
-        config['output_path'] = output_path
-        
-        video_path = assembler.create_video(generated_images, scenes)
-        
-        # Update status
-        generation_status['progress'] = 100
-        generation_status['message'] = "Generation completed successfully!"
-        generation_status['result_video'] = video_path
+        task_info['message'] = "Assembling video..."
+        task_info['progress'] = 75
+        background_tasks[task_id] = task_info
+
+        # Use project_config for output path determination within assembler
+        assembler.output_path_config = project_config['output_path'] # Ensure assembler uses correct output
+        video_path = assembler.create_video(valid_image_paths, scenes)
+
+        if not video_path:
+             raise ValueError("Video assembly failed.")
+
+        # Update status: Success
+        task_info['status'] = 'completed'
+        task_info['progress'] = 100
+        task_info['message'] = f"Generation completed successfully! Errors: {len(errors)}"
+        task_info['result_video'] = str(video_path) # Store relative or absolute path?
+
     except Exception as e:
-        logger.error(f"Error during generation: {e}")
-        generation_status['message'] = f"Error: {str(e)}"
+        logger.error(f"Error during generation task {task_id}: {e}", exc_info=True)
+        task_info['status'] = 'failed'
+        task_info['message'] = f"Error: {str(e)}"
+        task_info['result_video'] = None
     finally:
-        generation_status['running'] = False
+        task_info['end_time'] = time.time()
+        background_tasks[task_id] = task_info # Final status update
+        logger.info(f"Generation task {task_id} finished with status: {task_info['status']}")
 
 
-@app.route('/status')
-def get_status():
+# Update status route to handle task IDs
+@app.route('/status/<task_id>')
+def get_status(task_id):
     """
-    Get the current generation status
+    Get the status for a specific generation task.
     """
-    return jsonify(generation_status)
+    global background_tasks
+    if task_id in background_tasks:
+        # Optionally include scene details if requested?
+        return jsonify(background_tasks[task_id])
+    else:
+        return jsonify({"error": "Task not found"}), 404
+
+@app.route('/tasks')
+def get_tasks():
+     """ Get a list of recent/running tasks. """
+     # Return a summary, not the full potentially large scene data
+     task_summary = []
+     for task_id, data in background_tasks.items():
+          summary = {
+              k: v for k, v in data.items() if k != 'scenes' # Exclude scene details
+          }
+          task_summary.append(summary)
+     # Sort by start time descending?
+     task_summary.sort(key=lambda x: x.get('start_time', 0), reverse=True)
+     return jsonify(task_summary)
+
+# Update preview/results routes for projects
+@app.route('/projects/<project_name>/results/<path:filename>')
+def get_result_file(project_name, filename):
+    """ Serve a result file (video, image) from a project. """
+    try:
+        project_dir = get_project_dir(project_name)
+        # Sanitize filename path component received from URL
+        # werkzeug.utils.secure_filename removes path separators, which we don't want here.
+        # Instead, normalize the path and ensure it stays within the project.
+        filename_path = Path(filename)
+        # Basic check against directory traversal
+        if '..' in filename_path.parts:
+            return jsonify({"error": "Invalid file path"}), 400
+
+        # Define potential locations relative to the project directory
+        potential_paths = [
+            project_dir / 'results' / filename_path,    # Final videos
+            project_dir / 'temp' / 'generated' / filename_path, # Generated images (including previews)
+            project_dir / 'uploads' / filename_path,   # Original storyboard images (if needed for scene display)
+            # Add other locations if necessary
+        ]
+
+        found_path = None
+        for check_path in potential_paths:
+             # Use resolve() to get the absolute path and prevent traversal issues
+            abs_check_path = check_path.resolve()
+            # Ensure the resolved path is still within the project directory (important security check!)
+            if abs_check_path.is_file() and abs_check_path.is_relative_to(project_dir.resolve()):
+                found_path = abs_check_path
+                break
+
+        if found_path:
+            logger.debug(f"Serving file: {found_path}")
+            return send_file(found_path)
+        else:
+             logger.warning(f"File not found or not accessible in project '{project_name}': {filename}")
+             return jsonify({"error": "File not found or access denied"}), 404
+
+    except ValueError as e: # From get_project_dir
+         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+         logger.error(f"Error serving file '{filename}' from project '{project_name}': {e}", exc_info=True)
+         return jsonify({"error": "Failed to serve file"}), 500
 
 
-@app.route('/preview/<path:filename>')
-def preview_file(filename):
-    """
-    Preview a generated file
-    
-    Args:
-        filename (str): Path to the file
-    """
-    return send_file(filename)
-
-
+# Update style routes to use manager from app config
 @app.route('/styles')
 def list_styles():
     """
     List available styles
     """
+    style_manager = current_app.config['style_manager']
     styles = style_manager.list_styles()
     return jsonify(styles)
 
@@ -250,97 +455,242 @@ def create_style():
     """
     Create a new style
     """
+    style_manager = current_app.config['style_manager']
     data = request.json
     style_name = data.get('name')
-    style_data = data.get('data', {})
-    
-    if not style_name:
-        return jsonify({'error': 'Style name is required'}), 400
-    
+    style_data = data.get('config')
+
+    if not style_name or not style_data:
+        return jsonify({'error': 'Style name and config required'}), 400
+
     success = style_manager.create_style(style_name, style_data)
-    
     if success:
-        return jsonify({'success': True, 'message': f"Style '{style_name}' created successfully"})
+        return jsonify({'success': True, 'message': f'Style {style_name} created'})
     else:
-        return jsonify({'error': f"Failed to create style '{style_name}'"}), 500
+        return jsonify({'error': 'Failed to create style'}), 500
 
 
 @app.route('/styles/train', methods=['POST'])
-def train_style():
+async def train_style(): # Make async if training is async
     """
-    Train a new style
+    Train a new style (placeholder - needs async task handling like generate)
     """
+    style_manager = current_app.config['style_manager']
     data = request.json
     style_name = data.get('name')
-    training_images_dir = data.get('training_images_dir')
+    images_dir = data.get('images_dir') # Needs proper handling of uploaded images/paths
     base_style = data.get('base_style')
-    
-    if not style_name or not training_images_dir:
-        return jsonify({'error': 'Style name and training images directory are required'}), 400
-    
-    if not os.path.exists(training_images_dir):
-        return jsonify({'error': f"Training images directory '{training_images_dir}' not found"}), 400
-    
-    # Start training in a separate thread
-    def train_thread():
-        success = style_manager.train_style(style_name, training_images_dir, base_style)
-        logger.info(f"Style training {'completed successfully' if success else 'failed'}")
-    
-    training_thread = threading.Thread(target=train_thread)
-    training_thread.daemon = True
-    training_thread.start()
-    
-    return jsonify({'success': True, 'message': f"Style training started for '{style_name}'"})
+    steps = data.get('steps', 1000)
+
+    if not style_name or not images_dir:
+        return jsonify({'error': 'Style name and images directory required'}), 400
+
+    # TODO: Implement proper async task handling for training
+    # This is just a placeholder for the synchronous call
+    logger.warning("Style training route is currently synchronous and uses simulation.")
+    success = style_manager.train_style(style_name, images_dir, base_style, steps)
+
+    if success:
+        return jsonify({'success': True, 'message': f'Style training started/completed for {style_name}'})
+    else:
+        return jsonify({'error': 'Failed to start/complete style training'}), 500
 
 
 @app.route('/config', methods=['GET', 'POST'])
 def manage_config():
     """
-    Get or update configuration
+    Get or update the main application configuration
     """
-    global config
-    
+    config_path = current_app.config.get('main_config_path') # Need to store this path
+    if not config_path:
+         return jsonify({"error": "Configuration path not set"}), 500
+
     if request.method == 'POST':
-        # Update config
-        data = request.json
-        config.update(data)
-        
-        # Save config
-        save_config(config, 'config/user.yaml')
-        
-        return jsonify({'success': True, 'message': 'Configuration updated'})
+        try:
+            new_config_data = request.json
+            save_config(new_config_data, config_path)
+            # Update running config in app? Requires restart or careful update.
+            current_app.config['config'] = new_config_data
+            logger.info(f"Configuration saved to {config_path}")
+            return jsonify({'success': True, 'message': 'Configuration updated'})
+        except Exception as e:
+            logger.error(f"Error saving configuration: {e}")
+            return jsonify({'error': 'Failed to save configuration'}), 500
     else:
-        # Get config
+        # GET request
+        config = current_app.config['config']
         return jsonify(config)
 
 
-def start_web_app(config_path=None, host='127.0.0.1', port=5000, debug=False):
+# Modified start_web_app to accept managers
+def start_web_app(app_config, api_manager, model_manager, cache_manager, security_manager, host='127.0.0.1', port=5000, debug=False):
     """
-    Start the Flask web application
-    
+    Start the Flask web application with initialized managers.
+
     Args:
-        config_path (str, optional): Path to configuration file
-        host (str, optional): Host to bind to
-        port (int, optional): Port to bind to
-        debug (bool, optional): Whether to run in debug mode
+        app_config (dict): Loaded application configuration.
+        api_manager (APIManager): Initialized API manager.
+        model_manager (ModelManager): Initialized Model manager.
+        cache_manager (CacheManager): Initialized Cache manager.
+        security_manager (SecurityManager): Initialized Security manager.
+        host (str): Host to bind to.
+        port (int): Port to listen on.
+        debug (bool): Enable Flask debug mode.
     """
-    # Initialize the application
-    init_app(config_path)
-    
-    # Start the Flask app
+    global app
+
+    # Store managers and config in Flask app context
+    app.config['config'] = app_config
+    app.config['api_manager'] = api_manager
+    app.config['model_manager'] = model_manager
+    app.config['cache_manager'] = cache_manager
+    app.config['security_manager'] = security_manager
+    app.config['style_manager'] = StyleManager(app_config, model_manager, cache_manager) # Init StyleManager here
+    # Store path to main config if needed later (e.g., for saving)
+    app.config['main_config_path'] = app_config.get('loaded_from_path', 'config/default.yaml') # Assume load_config adds this
+
+    # Create base directories if they don't exist
+    app.config['UPLOAD_FOLDER'].mkdir(parents=True, exist_ok=True)
+    app.config['RESULT_FOLDER'].mkdir(parents=True, exist_ok=True)
+    app.config['PROJECTS_BASE_DIR'].mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Starting Flask web server on http://{host}:{port}")
+    # Use waitress or gunicorn for production instead of Flask dev server
     app.run(host=host, port=port, debug=debug)
+
+# Note: Need to adjust startup.py to call this modified start_web_app
+
+@app.route('/projects/<project_name>/preview_scene', methods=['POST'])
+async def preview_scene(project_name):
+    """ Generate a preview for a single selected scene. """
+    global background_tasks
+
+    try:
+        project_dir = get_project_dir(project_name)
+        if not project_dir.exists():
+            return jsonify({"error": "Project not found"}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Get data from request
+    data = request.json
+    task_id = data.get('task_id')
+    scene_index = data.get('scene_index')
+    style_name = data.get('style')
+    use_cloud = data.get('use_cloud', False)
+
+    # --- Input Validation ---
+    if task_id not in background_tasks:
+        return jsonify({"error": "Task ID not found or task data unavailable"}), 404
+
+    task_info = background_tasks[task_id]
+
+    if not isinstance(scene_index, int) or scene_index < 0 or scene_index >= len(task_info.get('scenes', [])):
+        return jsonify({"error": f"Invalid scene index: {scene_index}"}), 400
+
+    scene_data = task_info['scenes'][scene_index]
+    original_image_path = scene_data.get('image')
+    text = scene_data.get('text')
+
+    if not original_image_path or not Path(original_image_path).exists():
+        logger.error(f"Original image path not found or invalid for scene {scene_index} in task {task_id}: {original_image_path}")
+        return jsonify({"error": f"Original image for scene {scene_index+1} not found"}), 400
+
+    if not style_name:
+        return jsonify({"error": "Style name is required for preview"}), 400
+
+    logger.info(f"Received preview request for Project: {project_name}, Task: {task_id}, Scene Index: {scene_index}, Style: {style_name}")
+
+    # --- Get Managers and Config --- 
+    config = current_app.config['config']
+    api_manager = current_app.config['api_manager']
+    model_manager = current_app.config['model_manager']
+    cache_manager = current_app.config['cache_manager']
+    security_manager = current_app.config['security_manager']
+    style_manager = current_app.config['style_manager']
+
+    # Create project-specific config for this preview run
+    # Ensures temp files go to the right project temp dir
+    project_preview_config = config.copy()
+    project_preview_config["temp_dir"] = project_dir / 'temp'
+    project_preview_config["use_cloud"] = use_cloud # Reflect user choice for preview
+    # Output path for generator isn't strictly needed here as generate returns the path,
+    # but set temp_dir correctly is important.
+
+    # Ensure temp dir exists
+    os.makedirs(project_preview_config["temp_dir"] / "generated", exist_ok=True)
+
+    try:
+        # --- Instantiate Generator --- 
+        # Pass the specific config for this preview
+        generator = ImageGenerator(project_preview_config, style_manager, model_manager, api_manager, cache_manager, security_manager)
+
+        # --- Generate Single Image --- 
+        logger.info(f"Starting single scene generation for preview (Scene Index: {scene_index})...")
+        # generate method handles caching internally
+        generated_image_path = await generator.generate(
+            original_image_path,
+            text,
+            style_name,
+            scene_index=scene_index # Pass index for consistent naming/caching
+        )
+
+        if generated_image_path:
+            logger.info(f"Preview image generated successfully: {generated_image_path}")
+            # Return the path relative to the project's root or a structure the frontend understands
+            # The generate method saves within temp/generated. Let's return the full path for now
+            # and rely on get_result_file to serve it correctly.
+            # Frontend JS currently constructs URL assuming file is directly in results/generated,
+            # needs adjustment or this route needs to return a relative path.
+            # Let's return the full path and fix the serving route if needed.
+            return jsonify({
+                "success": True,
+                "generated_image_path": str(generated_image_path)
+            })
+        else:
+            logger.error(f"Preview generation failed for scene index {scene_index}.")
+            return jsonify({"success": False, "error": "Preview image generation failed"}), 500
+
+    except Exception as e:
+        logger.error(f"Error during preview generation for scene {scene_index}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"An internal error occurred: {str(e)}"}), 500
 
 
 if __name__ == '__main__':
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler("web_app.log"),
-        ],
-    )
-    
-    # Start the web app
-    start_web_app(debug=True)
+    # This allows running the UI directly for development,
+    # but managers won't be properly initialized without startup.py
+    print("WARNING: Running ui/app.py directly.")
+    print("Managers (API, Model, Cache, Security) will NOT be initialized.")
+    print("Functionality will be limited. Run via startup.py --web for full features.")
+
+    # Minimal config for basic operation if run directly
+    dev_config = {
+        "styles_dir": "styles",
+        "local_models_path": "models",
+        "temp_dir": "temp",
+        "output_path": "output/output.mp4",
+        "cache_enabled": False, # Disable cache if run directly
+        "comfyui": {"host": "127.0.0.1", "port": 8188},
+        # Add other minimal required config keys
+    }
+    # Create dummy managers if run directly
+    class DummyManager: pass
+    dummy_api_manager = DummyManager()
+    dummy_model_manager = ModelManager(dev_config) # ModelManager might work partially
+    dummy_cache_manager = CacheManager({"cache_enabled": False})
+    dummy_security_manager = DummyManager()
+
+    # Store dummy/minimal config and managers
+    app.config['config'] = dev_config
+    app.config['api_manager'] = dummy_api_manager
+    app.config['model_manager'] = dummy_model_manager
+    app.config['cache_manager'] = dummy_cache_manager
+    app.config['security_manager'] = dummy_security_manager
+    app.config['style_manager'] = StyleManager(dev_config, dummy_model_manager, dummy_cache_manager)
+
+    # Create base directories
+    app.config['UPLOAD_FOLDER'].mkdir(parents=True, exist_ok=True)
+    app.config['RESULT_FOLDER'].mkdir(parents=True, exist_ok=True)
+    app.config['PROJECTS_BASE_DIR'].mkdir(parents=True, exist_ok=True)
+
+    app.run(debug=True)

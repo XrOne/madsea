@@ -44,6 +44,12 @@ class MCPProtocol {
                 { id: 'tencent', name: 'Tencent API', type: 'image' },
                 { id: 'alibaba', name: 'Alibaba API', type: 'image' },
                 { id: 'google', name: 'Google Studio API', type: 'image' }
+            ],
+            // External AI models for prompt enhancement
+            externalAI: [
+                { id: 'gemini_studio', name: 'Google Gemini Studio', type: 'text', default: true },
+                { id: 'qwen21', name: 'Qwen 2.1 Max', type: 'text', default: false },
+                { id: 'wan21', name: 'WAN 2.1 (Tencent)', type: 'image', default: false }
             ]
         };
     }
