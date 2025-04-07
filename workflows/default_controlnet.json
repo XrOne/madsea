@@ -1,0 +1,83 @@
+{
+  "3": {
+    "inputs": {
+      "ckpt_name": "runwayml/stable-diffusion-v1-5"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "4": {
+    "inputs": {
+      "text": "",
+      "clip": ["3", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "5": {
+    "inputs": {
+      "text": "low quality, blurry, distorted, deformed",
+      "clip": ["3", 0]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "6": {
+    "inputs": {
+      "image": ""
+    },
+    "class_type": "LoadImage"
+  },
+  "7": {
+    "inputs": {
+      "image": ["6", 0],
+      "model": "lllyasviel/control_v11p_sd15_scribble",
+      "strength": 0.8
+    },
+    "class_type": "ControlNetLoader"
+  },
+  "8": {
+    "inputs": {
+      "model": ["3", 0],
+      "positive": ["4", 0],
+      "negative": ["5", 0],
+      "latent_image": ["9", 0],
+      "control_net": ["7", 0],
+      "seed": 42,
+      "steps": 20,
+      "cfg": 7.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal"
+    },
+    "class_type": "KSampler"
+  },
+  "9": {
+    "inputs": {
+      "width": 1024,
+      "height": 768,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage"
+  },
+  "10": {
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["3", 2]
+    },
+    "class_type": "VAEDecode"
+  },
+  "11": {
+    "inputs": {
+      "images": ["10", 0],
+      "filename_prefix": "generated",
+      "save_to": "output"
+    },
+    "class_type": "SaveImage"
+  },
+  "12": {
+    "inputs": {
+      "lora_name": "",
+      "strength": 0.8,
+      "model": ["3", 0],
+      "clip": ["3", 0]
+    },
+    "class_type": "LoraLoader"
+  }
+}

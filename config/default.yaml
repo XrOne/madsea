@@ -1,0 +1,36 @@
+# Default configuration for Storyboard-to-Video AI Platform
+
+# Paths
+storyboard_path: ""
+output_path: "output/output.mp4"
+temp_dir: "temp"
+styles_dir: "styles"
+local_models_path: "models"
+
+# Style settings
+style: "default"
+use_cloud: false
+cloud_api_key: ""
+cloud_api_provider: "openai"
+
+# Video settings
+scene_duration: 3.0  # seconds per scene
+transition_duration: 1.0  # seconds for transition
+resolution: [1024, 768]  # width, height
+fps: 24
+use_animation: false
+
+# OCR settings
+ocr_language: "eng"
+
+# ComfyUI settings
+comfyui:
+  host: "127.0.0.1"
+  port: 8188
+  workflow_dir: "workflows"
+
+# Model settings
+models:
+  stable_diffusion: "runwayml/stable-diffusion-v1-5"
+  controlnet: "lllyasviel/control_v11p_sd15_scribble"
+  lora: {}
