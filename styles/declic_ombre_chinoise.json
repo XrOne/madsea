@@ -1,0 +1,13 @@
+{
+  "name": "declic_ombre_chinoise",
+  "description": "Silhouettes int\u00e9grales avec rim light et lumi\u00e8re cin\u00e9matographique r\u00e9aliste",
+  "prompt_prefix": "cinematic photograph, silhouetted figure, rim lighting, realistic directional lighting",
+  "prompt_suffix": "detailed silhouette, no visible faces, cinematic shadows, realistic textures, 16:9 ratio",
+  "negative_prompt": "low quality, blurry, distorted, deformed, cartoon, anime, visible face details, flat lighting",
+  "workflow_template": "default_controlnet.json",
+  "lora_name": "",
+  "lora_strength": 0.85,
+  "cfg_scale": 7.5,
+  "steps": 30,
+  "sampler": "euler_ancestral"
+}

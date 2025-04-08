@@ -1,0 +1,13 @@
+{
+  "name": "declic",
+  "description": "Declic cinematic silhouette style",
+  "prompt_prefix": "silhouette style, high contrast, minimalist, black and white",
+  "prompt_suffix": "dramatic, stark, elegant, simple",
+  "negative_prompt": "color, detailed, complex, busy, noisy",
+  "workflow_template": "default_controlnet.json",
+  "lora_name": "",
+  "lora_strength": 0.8,
+  "cfg_scale": 7.0,
+  "steps": 20,
+  "sampler": "euler_ancestral"
+}

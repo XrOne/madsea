@@ -690,17 +690,17 @@ class CloudGenerator(BaseGenerator):
             else:
                 logger.error(f"Unsupported cloud API provider specified: {provider}")
                 return self._create_placeholder_image(output_path)
-
+            
             if image_data and isinstance(image_data, bytes):
-                # Save the image
-                with open(output_path, "wb") as f:
-                    f.write(image_data)
+            # Save the image
+            with open(output_path, "wb") as f:
+                f.write(image_data)
                 logger.info(f"Cloud generated image saved to: {output_path}")
                 return str(output_path)
             else:
                  logger.error(f"Cloud generation with {provider} failed or returned invalid data.")
                  return self._create_placeholder_image(output_path)
-
+            
         except Exception as e:
             logger.error(f"Error generating image with cloud API '{provider}': {e}", exc_info=True)
             return self._create_placeholder_image(output_path)

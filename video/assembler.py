@@ -386,47 +386,50 @@ class VideoAssembler:
         Returns:
             str or None: Path to the output video or None on failure
         """
+        list_file_path = None # Define outside try to ensure it's available in finally
         if not frame_paths:
             logger.error("No frames provided for video assembly")
             return None
         
         logger.info(f"Assembling {len(frame_paths)} frames into video: {output_video_path}")
         
-        # Create a temporary file listing the frames for ffmpeg
-        list_file_path = self.temp_dir / "framelist.txt"
-        with open(list_file_path, "w") as f:
-            for frame_path in frame_paths:
-                # Ensure paths are formatted correctly for ffmpeg
-                # Use forward slashes, escape special characters if needed
-                formatted_path = str(frame_path.resolve()).replace("\\", "/")
-                f.write(f"file '{formatted_path}'\n")
-                # Assuming duration based on FPS
-                f.write(f"duration {1.0/self.fps:.6f}\n")
-        
-        # Add the last frame again to ensure the list is properly terminated
-        last_frame_path = str(frame_paths[-1].resolve()).replace("\\", "/")
-        with open(list_file_path, "a") as f:
-            f.write(f"file '{last_frame_path}'\n")
-        
-        # Construct ffmpeg command
-        # Using concat demuxer for precise frame control
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",  # Overwrite output file if exists
-            "-f", "concat",
-            "-safe", "0", # Allow absolute paths in list file
-            "-i", str(list_file_path),
-            "-vf", f"fps={self.fps},scale={self.resolution[0]}:{self.resolution[1]}:flags=lanczos",
-            "-c:v", "libx264", # Video codec
-            "-preset", "medium", # Encoding speed vs compression
-            "-crf", "23", # Constant Rate Factor (lower value = better quality, larger file)
-            "-pix_fmt", "yuv420p", # Pixel format for compatibility
-            str(output_video_path)
-        ]
-        
-        logger.debug(f"Running ffmpeg command: {' '.join(ffmpeg_cmd)}")
-        
         try:
+            # Create a temporary file listing the frames for ffmpeg
+            list_file_path = self.temp_dir / "framelist.txt"
+            with open(list_file_path, "w") as f:
+                for frame_path in frame_paths:
+                    # Ensure paths are formatted correctly for ffmpeg
+                    # Use forward slashes, escape special characters if needed
+                    formatted_path = str(frame_path.resolve()).replace("\\", "/") # Corrected double backslash
+                    f.write(f"file '{formatted_path}'\n")
+                    # Assuming duration based on FPS
+                    f.write(f"duration {1.0/self.fps:.6f}\n")
+            
+            # Add the last frame again to ensure the list is properly terminated
+            # Check if frame_paths is not empty before accessing the last element
+            if frame_paths:
+                last_frame_path = str(frame_paths[-1].resolve()).replace("\\", "/") # Corrected double backslash
+                with open(list_file_path, "a") as f:
+                    f.write(f"file '{last_frame_path}'\n")
+            
+            # Construct ffmpeg command
+            # Using concat demuxer for precise frame control
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output file if exists
+                "-f", "concat",
+                "-safe", "0", # Allow absolute paths in list file
+                "-i", str(list_file_path),
+                "-vf", f"fps={self.fps},scale={self.resolution[0]}:{self.resolution[1]}:flags=lanczos",
+                "-c:v", "libx264", # Video codec
+                "-preset", "medium", # Encoding speed vs compression
+                "-crf", "23", # Constant Rate Factor (lower value = better quality, larger file)
+                "-pix_fmt", "yuv420p", # Pixel format for compatibility
+                str(output_video_path)
+            ]
+            
+            logger.debug(f"Running ffmpeg command: {' '.join(ffmpeg_cmd)}")
+            
             result = subprocess.run(
                 ffmpeg_cmd,
                 stdout=subprocess.PIPE,
@@ -449,10 +452,15 @@ class VideoAssembler:
             logger.error(f"An unexpected error occurred during ffmpeg execution: {e}")
             return None
         finally:
-            # Clean up the list file
-            if list_file_path.exists():
-                try: os.remove(list_file_path) except OSError:
-        
+            # Clean up the temporary list file used by ffmpeg concat
+            # Check if list_file_path was defined and exists
+            if list_file_path and list_file_path.exists():
+                 try:
+                     os.remove(list_file_path)
+                 except OSError:
+                      # Ignore error if file doesn't exist or cannot be removed
+                     pass
+    
     def _add_text_overlays(self, video_path, scenes):
         """
         Add text overlays to the video
@@ -464,6 +472,7 @@ class VideoAssembler:
         Returns:
             str: Path to the output video with text overlays
         """
+        subtitle_path = None # Initialize subtitle_path
         try:
             # Create output path
             input_path = Path(video_path)
@@ -473,12 +482,16 @@ class VideoAssembler:
             subtitle_path = self.temp_dir / "subtitles.srt"
             self._create_subtitle_file(subtitle_path, scenes)
             
+            # Prepare subtitle path for ffmpeg filter (escape special chars)
+            subtitle_path_str_escaped = str(subtitle_path).replace(':', '\\:').replace('\\', '/') # Corrected double backslash
+            ffmpeg_vf_filter = f"subtitles={subtitle_path_str_escaped}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff&'"
+
             # Add subtitles using ffmpeg
             cmd = [
                 "ffmpeg",
                 "-y",  # Overwrite output file if it exists
                 "-i", str(input_path),  # Input video
-                "-vf", f"subtitles={str(subtitle_path).replace(':', '\\:').replace('\\', '/')}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff&'", # Basic style
+                "-vf", ffmpeg_vf_filter, # Use the pre-formatted filter string
                 "-c:a", "copy",  # Copy audio stream if present
                 str(output_path)  # Output path
             ]
@@ -498,28 +511,27 @@ class VideoAssembler:
             logger.debug(f"ffmpeg stdout:\n{result.stdout}")
             logger.debug(f"ffmpeg stderr:\n{result.stderr}")
             
-            # Clean up subtitle file
-            if subtitle_path.exists():
-                try: os.remove(subtitle_path) except OSError:
-            
             # Return the path to the new video with overlays
             return str(output_path)
         except subprocess.CalledProcessError as e:
             logger.error(f"ffmpeg subtitles command failed with exit code {e.returncode}")
             logger.error(f"ffmpeg stderr:\n{e.stderr}")
-            if subtitle_path.exists():
-                try: os.remove(subtitle_path) except OSError:
             return None # Return None on failure
         except FileNotFoundError:
             logger.error("ffmpeg command not found. Ensure ffmpeg is installed and in PATH.")
-            if subtitle_path.exists():
-                try: os.remove(subtitle_path) except OSError:
             return None
         except Exception as e:
             logger.error(f"An unexpected error occurred during subtitle overlay: {e}")
-            if subtitle_path.exists():
-                try: os.remove(subtitle_path) except OSError:
             return None
+        finally:
+            # Clean up subtitle file
+            # Check if subtitle_path was defined and exists
+            if subtitle_path and subtitle_path.exists():
+                try:
+                    os.remove(subtitle_path)
+                except OSError:
+                     # Ignore error if file doesn't exist or cannot be removed
+                    pass
     
     def _create_subtitle_file(self, subtitle_path, scenes):
         """
@@ -604,40 +616,42 @@ class VideoAssembler:
         Returns:
             str or None: Path to the output video or None on failure
         """
+        list_file_path = None # Define outside try to ensure it's available in finally
         if not image_paths:
             return None
         
-        # Create input list file for ffmpeg (image per second)
-        list_file_path = self.temp_dir / "fallback_framelist.txt"
-        with open(list_file_path, "w") as f:
-            for img_path in image_paths:
-                if Path(img_path).exists():
-                    formatted_path = str(Path(img_path).resolve()).replace("\\", "/")
-                    f.write(f"file '{formatted_path}'\n")
-                    f.write(f"duration 1.0\n") # Simple 1 second per image
-        
-        # Add last image again
-        if Path(image_paths[-1]).exists():
-            last_frame_path = str(Path(image_paths[-1]).resolve()).replace("\\", "/")
-            with open(list_file_path, "a") as f:
-                f.write(f"file '{last_frame_path}'\n")
-        
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(list_file_path),
-            "-vf", f"fps={self.fps},scale={self.resolution[0]}:{self.resolution[1]}:flags=lanczos,format=yuv420p",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "28",
-            str(output_path)
-        ]
-        
-        logger.debug(f"Running ffmpeg for fallback slideshow: {' '.join(ffmpeg_cmd)}")
-        
         try:
+            # Create input list file for ffmpeg (image per second)
+            list_file_path = self.temp_dir / "fallback_framelist.txt"
+            with open(list_file_path, "w") as f:
+                for img_path in image_paths:
+                    if Path(img_path).exists():
+                        formatted_path = str(Path(img_path).resolve()).replace("\\", "/") # Corrected double backslash
+                        f.write(f"file '{formatted_path}'\n")
+                        f.write(f"duration 1.0\n") # Simple 1 second per image
+            
+            # Add last image again
+            # Check if image_paths is not empty before accessing the last element
+            if image_paths and Path(image_paths[-1]).exists():
+                last_frame_path = str(Path(image_paths[-1]).resolve()).replace("\\", "/") # Corrected double backslash
+                with open(list_file_path, "a") as f:
+                    f.write(f"file '{last_frame_path}'\n")
+            
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(list_file_path),
+                "-vf", f"fps={self.fps},scale={self.resolution[0]}:{self.resolution[1]}:flags=lanczos,format=yuv420p",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "28",
+                str(output_path)
+            ]
+            
+            logger.debug(f"Running ffmpeg for fallback slideshow: {' '.join(ffmpeg_cmd)}")
+            
             result = subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
             logger.info(f"Fallback slideshow created successfully: {output_path}")
             return str(output_path)
@@ -647,15 +661,29 @@ class VideoAssembler:
                 logger.error(f"ffmpeg stderr: {e.stderr}")
             return None
         finally:
-            if list_file_path.exists():
-                try: os.remove(list_file_path) except OSError:
+            # Ensure list_file_path exists before trying to remove
+            # Check if list_file_path was defined and exists
+            if list_file_path and list_file_path.exists():
+                try:
+                    os.remove(list_file_path)
+                except OSError:
+                     # Ignore error if file doesn't exist or cannot be removed
+                    pass
     
     def _clear_temp_files(self):
-        """Removes files created by this assembler instance in its temp subdir."""
+        """Clear temporary files generated during assembly."""
         if self.temp_dir.exists():
-            logger.debug(f"Clearing temp video directory: {self.temp_dir}")
-            try:
-                # Be careful not to delete the main temp dir
-                shutil.rmtree(self.temp_dir)
-            except Exception as e:
-                logger.warning(f"Could not clear temp directory {self.temp_dir}: {e}")
+            logger.debug(f"Clearing temporary video directory: {self.temp_dir}")
+            for item in self.temp_dir.iterdir():
+                try:
+                    if item.is_file() or item.is_symlink():
+                        os.remove(item)
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                except OSError as e:
+                    logger.warning(f"Could not remove temp item {item}: {e}")
+            # Optionally remove the temp dir itself if empty, but often useful for debugging
+            # try:
+            #     self.temp_dir.rmdir()
+            # except OSError:
+            #     pass

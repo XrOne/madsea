@@ -97,7 +97,7 @@ async def check_dependencies(config, api_manager):
     """Vérifie que toutes les dépendances requises sont installées."""
     logger.info("Vérification des dépendances...")
     all_ok = True
-
+    
     # Vérifier les dépendances Python
     try:
         import torch
@@ -111,7 +111,7 @@ async def check_dependencies(config, api_manager):
         import transformers
         import aiohttp # Needed for APIManager
         import cryptography # Needed for SecurityManager
-
+        
         logger.info("✓ Dépendances Python de base installées")
     except ImportError as e:
         logger.error(f"✗ Dépendance Python manquante: {e}")
@@ -129,7 +129,7 @@ async def check_dependencies(config, api_manager):
         logger.warning("✗ Tesseract OCR non détecté. L'OCR ne fonctionnera pas correctement.")
         logger.info("Installez Tesseract OCR: https://github.com/tesseract-ocr/tesseract")
         # Optional dependency, don't set all_ok = False
-
+    
     # Vérifier FFmpeg
     try:
         result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=False)
@@ -172,7 +172,7 @@ async def check_dependencies(config, api_manager):
 async def install_external_models(config, api_manager, model_manager, security_manager):
     """Installe et configure les modèles externes."""
     logger.info("Installation et configuration des modèles externes via les gestionnaires...")
-
+    
     results = {
         "qwen": {"status": "unknown", "message": "Vérification non implémentée via ModelManager"},
         "gemini": {"status": "unknown", "message": "Vérification non implémentée via APIManager"},
@@ -256,7 +256,7 @@ def start_web_interface(config):
 async def main():
     """Point d'entrée principal asynchrone pour l'application."""
     args = parse_arguments()
-
+    
     # Setup logging level
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.getLogger().setLevel(log_level)

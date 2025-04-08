@@ -92,7 +92,7 @@
          .form-control:disabled, .btn:disabled {
              cursor: not-allowed;
              opacity: 0.65;
-         }
+        }
     </style>
 </head>
 <body>
@@ -191,7 +191,7 @@
                          <h5><i class="bi bi-activity"></i> Generation Progress <span id="currentTaskLabel" class="badge bg-secondary ms-2">No Task</span></h5>
                      </div>
                      <div class="card-body">
-                        <div class="progress" style="height: 25px;">
+                    <div class="progress" style="height: 25px;">
                             <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
                         </div>
                         <p id="statusMessage" class="mt-2 text-muted">Ready</p>
@@ -204,10 +204,10 @@
                          <h5><i class="bi bi-images"></i> Scenes <span id="sceneCountLabel" class="badge bg-info ms-2">0</span></h5>
                      </div>
                      <div class="card-body">
-                         <div id="scenesList">
+                    <div id="scenesList">
                             <p class="text-muted">Scenes will appear here during generation.</p>
                         </div>
-                     </div>
+                    </div>
                 </div>
 
                 <!-- Video Preview -->
@@ -216,7 +216,7 @@
                         <h5><i class="bi bi-camera-reels"></i> Video Preview</h5>
                      </div>
                      <div class="card-body">
-                        <div id="videoPreview">
+                    <div id="videoPreview">
                             <p class="text-muted">Video preview will appear here after generation is complete.</p>
                         </div>
                          <div id="downloadButtonContainer" class="mt-2"></div>
@@ -565,14 +565,14 @@
                              currentTaskLabel.classList.remove('bg-primary', 'bg-danger');
                              currentTaskLabel.classList.add('bg-success');
                              currentTaskLabel.textContent = `Task: ${currentTaskId.substring(0, 8)}... (Completed)`;
-                            // Show video preview
-                            if (status.result_video) {
+                        // Show video preview
+                        if (status.result_video) {
                                  const videoFilename = status.result_video.split('/').pop().split('\\').pop(); // Get base filename
-                                videoPreview.innerHTML = `
+                            videoPreview.innerHTML = `
                                     <video controls preload="metadata">
                                         <source src="/projects/${selectedProject}/results/${videoFilename}" type="video/mp4">
-                                        Your browser does not support the video tag.
-                                    </video>
+                                    Your browser does not support the video tag.
+                                </video>
                                 `;
                                 downloadButtonContainer.innerHTML = `
                                      <a href="/projects/${selectedProject}/results/${videoFilename}" class="btn btn-primary" download="${videoFilename}"><i class="bi bi-download"></i> Download Video</a>
