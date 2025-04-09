@@ -76,14 +76,14 @@ def index():
         latest_task_id = None
         latest_task_status = {"running": False, "message": "Ready"} # Default
         if background_tasks:
-             # Find the most recently started task (requires storing timestamp)
-             # Simple approach: just take the last one added (not reliable)
-             latest_task_id = list(background_tasks.keys())[-1] # Example: get latest ID
-             latest_task_status = background_tasks[latest_task_id]
+            # Find the most recently started task (requires storing timestamp)
+            # Simple approach: just take the last one added (not reliable)
+            latest_task_id = list(background_tasks.keys())[-1] # Example: get latest ID
+            latest_task_status = background_tasks[latest_task_id]
 
         # TODO: Add project listing/selection here
         projects = list_projects()
-
+    
         return render_template(
             'index.html',
             styles=styles,
@@ -156,21 +156,21 @@ def upload_storyboard(project_name):
     try:
         project_dir = get_project_dir(project_name)
         if not project_dir.exists():
-             return jsonify({"error": "Project not found"}), 404
+            return jsonify({"error": "Project not found"}), 404
 
         upload_folder = project_dir / 'uploads'
 
         if 'storyboard' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
-
+    
         file = request.files['storyboard']
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
-
+    
         filename = secure_filename(file.filename)
         upload_path = upload_folder / filename
         file.save(upload_path)
-
+    
         logger.info(f"Uploaded '{filename}' to project '{project_name}'")
         return jsonify({
             'success': True,
@@ -178,10 +178,10 @@ def upload_storyboard(project_name):
             'path': str(upload_path) # Return path relative to project?
         })
     except ValueError as e:
-         return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-         logger.error(f"Error uploading to project '{project_name}': {e}", exc_info=True)
-         return jsonify({"error": "File upload failed"}), 500
+        logger.error(f"Error uploading to project '{project_name}': {e}", exc_info=True)
+        return jsonify({"error": "File upload failed"}), 500
 
 
 # Make generate async
@@ -220,7 +220,7 @@ async def generate(project_name):
     style_name = data.get('style', config.get("style", "default"))
     use_cloud = data.get('use_cloud', config.get("use_cloud", False))
     output_filename = data.get('output_filename', f"{project_name}_video_{int(time.time())}.mp4")
-
+    
     # Validate parameters
     if not storyboard_filename:
         return jsonify({'error': 'Storyboard filename required'}), 400
@@ -238,13 +238,13 @@ async def generate(project_name):
         'current_scene': 0,
         'message': 'Generation queued',
         'result_video': None,
-        'scenes': [],
         'project_name': project_name,
         'start_time': time.time()
     }
 
     # Define project-specific paths for this task
     project_config = config.copy() # Use a copy to avoid modifying global config
+    project_config["project_dir"] = project_dir # Store project path
     project_config["temp_dir"] = project_dir / 'temp'
     project_config["output_path"] = project_dir / 'results' / secure_filename(output_filename)
     project_config["style"] = style_name
@@ -255,119 +255,105 @@ async def generate(project_name):
 
     logger.info(f"Starting generation task {task_id} for project '{project_name}'...")
     # Start generation in background using asyncio
-    asyncio.create_task(run_generation_async(
+    asyncio.create_task(run_generation_pipeline(
         task_id,
-        project_config,
-        parser, generator, assembler,
-        str(storyboard_path),
-        style_name
+        project_dir,
+        parser,
+        generator,
+        assembler,
+        storyboard_path,
+        project_config
     ))
 
     return jsonify({'success': True, 'message': 'Generation started', 'task_id': task_id})
 
-# New async function to run generation
-async def run_generation_async(task_id, project_config, parser, generator, assembler, storyboard_path, style_name):
-    """
-    Run the generation process asynchronously.
-
-    Args:
-        task_id (str): Unique ID for this task.
-        project_config (dict): Configuration specific to this project run.
-        parser (StoryboardParser): Parser instance.
-        generator (ImageGenerator): Generator instance.
-        assembler (VideoAssembler): Assembler instance.
-        storyboard_path (str): Path to the storyboard.
-        style_name (str): Name of the style to apply.
-    """
+async def run_generation_pipeline(task_id, project_dir, parser, generator, assembler, storyboard_path, config):
+    """ The actual pipeline logic, runs in background. NO VIDEO ASSEMBLY YET """
     global background_tasks
-    task_info = background_tasks[task_id]
-
+    # Log the start with task_id
+    logger.info(f"[Task {task_id}] Starting pipeline for storyboard: {storyboard_path}")
     try:
-        task_info['status'] = 'running'
-        task_info['message'] = 'Parsing storyboard...'
-        background_tasks[task_id] = task_info # Update global state
-
-        # Parse storyboard
+        # 1. Parse (get scene data including original image paths)
+        # --- PARSE THE STORYBOARD HERE --- 
+        background_tasks[task_id]['status'] = 'parsing'
+        background_tasks[task_id]['message'] = 'Parsing storyboard...'
+        logger.info(f"[Task {task_id}] Parsing storyboard...")
         scenes = parser.parse(storyboard_path)
         if not scenes:
-            raise ValueError("Storyboard parsing failed or returned no scenes.")
+            logger.error(f"[Task {task_id}] Parsing failed or returned no scenes.")
+            raise ValueError("Parsing failed or storyboard is empty.")
+        
+        logger.info(f"[Task {task_id}] Parsing complete. Found {len(scenes)} scenes.")
 
-        task_info['total'] = len(scenes)
-        task_info['scenes'] = scenes # Store parsed scene info (paths, text)
-        background_tasks[task_id] = task_info
+        # --- STORE PARSED SCENES IN TASK DATA --- 
+        background_tasks[task_id]['scenes'] = scenes
+        background_tasks[task_id]['total'] = len(scenes)
 
-        # Generate images for each scene concurrently
-        generation_tasks = []
-        for i, scene in enumerate(scenes):
-            task_info['current_scene'] = i + 1
-            task_info['progress'] = (i / len(scenes)) * 50 # Parsing + Generation = 100%
-            task_info['message'] = f"Generating image for scene {i+1}/{len(scenes)}..."
-            background_tasks[task_id] = task_info
+        if not scenes:
+             raise ValueError("Scene data not found in task.")
+        
+        background_tasks[task_id]['status'] = 'generating'
+        total_scenes = len(scenes)
+        generated_image_paths = [None] * total_scenes # Initialize list for results
 
-            # Schedule image generation task
-            generation_tasks.append(
-                generator.generate(scene['image'], scene['text'], style_name, scene_index=i)
-            )
+        # 2. Generate images sequentially (can be parallelized later)
+        for i, scene_data in enumerate(scenes):
+             current_scene_num = i + 1
+             background_tasks[task_id]['message'] = f'Generating image for scene {current_scene_num}/{total_scenes}'
+             background_tasks[task_id]['progress'] = i # Progress based on starting scene
+             background_tasks[task_id]['current_scene'] = current_scene_num
+             if scenes[i]: scenes[i]['status'] = 'generating' # Update scene status
 
-        # Wait for all image generations to complete
-        generated_image_paths = await asyncio.gather(*generation_tasks, return_exceptions=True)
+             logger.info(f"Task {task_id}: Generating scene {i}")
+             # Ensure paths are strings
+             original_img_path = str(scene_data.get('image', ''))
+             scene_text = scene_data.get('text', '')
+             
+             if not original_img_path or not Path(original_img_path).exists():
+                 logger.error(f"Task {task_id}: Original image path invalid or missing for scene {i}: {original_img_path}")
+                 if scenes[i]: scenes[i]['status'] = 'error'
+                 if scenes[i]: scenes[i]['error'] = 'Original image missing'
+                 continue # Skip this scene
 
-        # Process results, linking generated paths back to scenes
-        valid_image_paths = []
-        errors = []
-        for i, result in enumerate(generated_image_paths):
-            if isinstance(result, Exception):
-                logger.error(f"Error generating image for scene {i+1}: {result}")
-                errors.append(f"Scene {i+1}: {result}")
-                # Update scene status in task_info?
-                task_info['scenes'][i]['generated_image'] = None
-                task_info['scenes'][i]['error'] = str(result)
-            elif result is None:
-                 logger.error(f"Image generation returned None for scene {i+1}")
-                 errors.append(f"Scene {i+1}: Generation returned None")
-                 task_info['scenes'][i]['generated_image'] = None
-                 task_info['scenes'][i]['error'] = "Generation failed (returned None)"
-            else:
-                valid_image_paths.append(result)
-                task_info['scenes'][i]['generated_image'] = str(result) # Store path
+             try:
+                 # Call the main generator's generate method
+                 # Pass style from the config used for this task
+                 generated_path = await generator.generate(
+                     original_img_path,
+                     scene_text,
+                     style_name=config.get('style', 'default'), 
+                     scene_index=i
+                 )
+                 
+                 if generated_path:
+                     generated_image_paths[i] = generated_path
+                     # --- IMPORTANT: Update the scene data with the path --- 
+                     if scenes[i]: scenes[i]['generated_image_path'] = generated_path 
+                     if scenes[i]: scenes[i]['status'] = 'complete'
+                     logger.info(f"Task {task_id}: Scene {i} generated: {generated_path}")
+                 else:
+                      logger.error(f"Task {task_id}: Failed to generate image for scene {i}")
+                      if scenes[i]: scenes[i]['status'] = 'error'
+                      if scenes[i]: scenes[i]['error'] = 'Generation failed'
+             except Exception as scene_e:
+                 logger.error(f"Task {task_id}: Error during generation for scene {i}: {scene_e}", exc_info=True)
+                 if scenes[i]: scenes[i]['status'] = 'error'
+                 if scenes[i]: scenes[i]['error'] = f'Error: {scene_e}'
 
-        task_info['message'] = f"Image generation complete. Errors: {len(errors)}/{len(scenes)}."
-        task_info['progress'] = 50
-        background_tasks[task_id] = task_info
-
-        if not valid_image_paths:
-            raise ValueError("No images were successfully generated.")
-
-        # Assemble video
-        task_info['message'] = "Assembling video..."
-        task_info['progress'] = 75
-        background_tasks[task_id] = task_info
-
-        # Use project_config for output path determination within assembler
-        assembler.output_path_config = project_config['output_path'] # Ensure assembler uses correct output
-        video_path = assembler.create_video(valid_image_paths, scenes)
-
-        if not video_path:
-             raise ValueError("Video assembly failed.")
-
-        # Update status: Success
-        task_info['status'] = 'completed'
-        task_info['progress'] = 100
-        task_info['message'] = f"Generation completed successfully! Errors: {len(errors)}"
-        task_info['result_video'] = str(video_path) # Store relative or absolute path?
+        # 3. Update final task status (NO VIDEO ASSEMBLY)
+        background_tasks[task_id]['status'] = 'complete'
+        background_tasks[task_id]['message'] = 'Image generation complete.'
+        background_tasks[task_id]['progress'] = total_scenes
+        # Result is the list of generated image paths (or None)
+        # background_tasks[task_id]['result_images'] = generated_image_paths 
 
     except Exception as e:
-        logger.error(f"Error during generation task {task_id}: {e}", exc_info=True)
-        task_info['status'] = 'failed'
-        task_info['message'] = f"Error: {str(e)}"
-        task_info['result_video'] = None
-    finally:
-        task_info['end_time'] = time.time()
-        background_tasks[task_id] = task_info # Final status update
-        logger.info(f"Generation task {task_id} finished with status: {task_info['status']}")
+        logger.error(f"Error in background generation pipeline for task {task_id}: {e}", exc_info=True)
+        if task_id in background_tasks:
+            background_tasks[task_id]['status'] = 'error'
+            background_tasks[task_id]['message'] = f'Pipeline error: {e}'
 
-
-# Update status route to handle task IDs
+# --- Status Endpoint ---
 @app.route('/status/<task_id>')
 def get_status(task_id):
     """
@@ -382,60 +368,97 @@ def get_status(task_id):
 
 @app.route('/tasks')
 def get_tasks():
-     """ Get a list of recent/running tasks. """
-     # Return a summary, not the full potentially large scene data
-     task_summary = []
-     for task_id, data in background_tasks.items():
-          summary = {
-              k: v for k, v in data.items() if k != 'scenes' # Exclude scene details
-          }
-          task_summary.append(summary)
-     # Sort by start time descending?
-     task_summary.sort(key=lambda x: x.get('start_time', 0), reverse=True)
-     return jsonify(task_summary)
+    """ Returns a summary of all current tasks. """
+    # Avoid sending potentially large scene data in the summary
+    tasks_summary = {}
+    for task_id, task_data in background_tasks.items():
+        summary = task_data.copy()
+        summary.pop('scenes', None) # Remove scenes from summary
+        tasks_summary[task_id] = summary
+    return jsonify(tasks_summary)
 
-# Update preview/results routes for projects
-@app.route('/projects/<project_name>/results/<path:filename>')
-def get_result_file(project_name, filename):
-    """ Serve a result file (video, image) from a project. """
+@app.route('/projects/<project_name>/temp/<path:filename>')
+def get_temp_file(project_name, filename):
+    """ Serves files from the project's temporary directory. """
     try:
         project_dir = get_project_dir(project_name)
-        # Sanitize filename path component received from URL
-        # werkzeug.utils.secure_filename removes path separators, which we don't want here.
-        # Instead, normalize the path and ensure it stays within the project.
-        filename_path = Path(filename)
-        # Basic check against directory traversal
-        if '..' in filename_path.parts:
-            return jsonify({"error": "Invalid file path"}), 400
+        if not project_dir.exists():
+            return jsonify({"error": "Project not found"}), 404
 
-        # Define potential locations relative to the project directory
-        potential_paths = [
-            project_dir / 'results' / filename_path,    # Final videos
-            project_dir / 'temp' / 'generated' / filename_path, # Generated images (including previews)
-            project_dir / 'uploads' / filename_path,   # Original storyboard images (if needed for scene display)
-            # Add other locations if necessary
-        ]
+        # Sanitize filename
+        safe_filename = secure_filename(filename) # Basic sanitization
+        # More robust path traversal check might be needed depending on usage
+        file_path = project_dir / 'temp' / safe_filename
 
-        found_path = None
-        for check_path in potential_paths:
-             # Use resolve() to get the absolute path and prevent traversal issues
-            abs_check_path = check_path.resolve()
-            # Ensure the resolved path is still within the project directory (important security check!)
-            if abs_check_path.is_file() and abs_check_path.is_relative_to(project_dir.resolve()):
-                found_path = abs_check_path
-                break
+        if not file_path.is_file():
+            logger.warning(f"Temp file not found: {file_path}")
+            return jsonify({"error": "File not found in temp directory"}), 404
 
-        if found_path:
-            logger.debug(f"Serving file: {found_path}")
-            return send_file(found_path)
-        else:
-             logger.warning(f"File not found or not accessible in project '{project_name}': {filename}")
-             return jsonify({"error": "File not found or access denied"}), 404
+        # Determine mimetype (optional but good practice)
+        # mimetype = mimetypes.guess_type(file_path)[0]
+        logger.debug(f"Serving temp file: {file_path}")
+        return send_file(file_path) # Add mimetype=mimetype if needed
 
-    except ValueError as e: # From get_project_dir
+    except ValueError as e:
+         # From get_project_dir
          return jsonify({"error": str(e)}), 400
     except Exception as e:
-         logger.error(f"Error serving file '{filename}' from project '{project_name}': {e}", exc_info=True)
+         logger.error(f"Error serving temp file '{filename}' for project '{project_name}': {e}", exc_info=True)
+         return jsonify({"error": "Failed to serve file"}), 500
+
+
+@app.route('/projects/<project_name>/generated/<path:filename>')
+def get_generated_file(project_name, filename):
+    """
+    Serve generated image files from the project's temp/generated/ directory.
+    """
+    try:
+        project_dir = get_project_dir(project_name)
+        if not project_dir.exists():
+            logger.warning(f"Project directory not found: {project_dir}")
+            return jsonify({"error": "Project not found"}), 404
+
+        file_path = project_dir / 'generated' / secure_filename(filename)
+        if not file_path.exists():
+            logger.warning(f"Generated file not found: {file_path}")
+            return jsonify({"error": "Generated file not found"}), 404
+
+        logger.info(f"Serving generated file: {file_path}")
+        return send_file(file_path)
+    except Exception as e:
+        logger.error(f"Error serving generated file: {e}", exc_info=True)
+        return jsonify({"error": "Failed to serve generated file"}), 500
+
+
+@app.route('/projects/<project_name>/results/<path:filename>')
+def get_result_file(project_name, filename):
+    """
+    Serve result files (like the final video) for a project.
+    """
+    try:
+        project_dir = get_project_dir(project_name)
+        if not project_dir.exists():
+             return jsonify({"error": "Project not found"}), 404
+
+        # Sanitize filename - IMPORTANT for security
+        safe_filename = secure_filename(filename)
+        file_path = project_dir / 'results' / safe_filename
+
+        if not file_path.is_file():
+             logger.warning(f"Result file not found: {file_path}")
+             return jsonify({"error": "Result file not found"}), 404
+
+        # Determine mimetype (optional but good practice)
+        # mimetype = mimetypes.guess_type(file_path)[0]
+        logger.debug(f"Serving result file: {file_path}")
+        # Use as_attachment=True if you want download instead of display
+        return send_file(file_path)
+
+    except ValueError as e:
+         # From get_project_dir
+         return jsonify({"error": str(e)}), 400
+    except Exception as e:
+         logger.error(f"Error serving result file '{filename}' for project '{project_name}': {e}", exc_info=True)
          return jsonify({"error": "Failed to serve file"}), 500
 
 
@@ -459,10 +482,10 @@ def create_style():
     data = request.json
     style_name = data.get('name')
     style_data = data.get('config')
-
+    
     if not style_name or not style_data:
         return jsonify({'error': 'Style name and config required'}), 400
-
+    
     success = style_manager.create_style(style_name, style_data)
     if success:
         return jsonify({'success': True, 'message': f'Style {style_name} created'})
@@ -503,8 +526,8 @@ def manage_config():
     """
     config_path = current_app.config.get('main_config_path') # Need to store this path
     if not config_path:
-         return jsonify({"error": "Configuration path not set"}), 500
-
+        return jsonify({"error": "Configuration path not set"}), 500
+    
     if request.method == 'POST':
         try:
             new_config_data = request.json
@@ -526,7 +549,7 @@ def manage_config():
 def start_web_app(app_config, api_manager, model_manager, cache_manager, security_manager, host='127.0.0.1', port=5000, debug=False):
     """
     Start the Flask web application with initialized managers.
-
+    
     Args:
         app_config (dict): Loaded application configuration.
         api_manager (APIManager): Initialized API manager.

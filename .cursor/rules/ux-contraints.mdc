@@ -4,7 +4,12 @@ globs:
 alwaysApply: true
 ---
 
-# Your rule content
+Toujours générer en 16:9
 
-- You can @ files here
-- You can use markdown but dont have to
+Générer image de start et end de chaque séquence
+
+Les silhouettes doivent respecter le style "ombre chinoise" : pas de visage visible
+
+Pour les styles labo : rendu photoréaliste, couleurs crédibles, lumière directionnelle
+
+Suivre les directions de caméra du découpage (travelling, OTS, pano, etc.)

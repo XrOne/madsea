@@ -206,13 +206,33 @@ class StoryboardParser:
         image_path = self.temp_dir / image_filename
         try:
             # Render page to image
-            pix = page.get_pixmap(matrix=fitz.Matrix(300/72, 300/72)) # Higher DPI
-            pix.save(str(image_path))
-            logger.debug(f"Extracted image for page {page_num} to {image_path}")
-            return image_path
+            matrix = fitz.Matrix(300/72, 300/72)
+            pix = page.get_pixmap(matrix=matrix, alpha=False) # alpha=False for RGB PNG
+
+            # Save the pixmap directly to the output path
+            logger.info(f"Attempting to save image to: {image_path}")
+            save_success = False
+            try:
+                 pix.save(str(image_path))
+                 # Check existence immediately after saving
+                 if image_path.is_file():
+                      save_success = True
+                      logger.info(f"VERIFIED: Image file exists at {image_path} immediately after save.")
+                 else:
+                      logger.error(f"FAILED VERIFICATION: Image file NOT FOUND at {image_path} immediately after save attempt.")
+            except Exception as save_error:
+                 logger.error(f"ERROR DURING SAVE: Failed to save image to {image_path}: {save_error}", exc_info=True)
+                 # save_success remains False
+
+            # Return relative path only if save was verified
+            if save_success:
+                 return image_path
+            else:
+                 return None # Indicate failure clearly
         except Exception as e:
-            logger.error(f"Failed to extract image for page {page_num}: {e}")
-            return None # Return None if extraction fails
+            # Catch errors during pixmap generation itself
+            logger.error(f"Failed to extract pixmap for page {page_num + 1}: {e}", exc_info=True)
+            return None # Indicate failure
     
     def _parse_image_directory(self, dir_path):
         """

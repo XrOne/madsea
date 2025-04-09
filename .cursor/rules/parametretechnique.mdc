@@ -4,6 +4,25 @@ globs:
 alwaysApply: true
 ---
 
+generation:
+  resolution: "1920x1080"
+  style: "declic"  # or "labo"
+  model: "sd15"
+  controlnet: true
+  controlnet_type: "scribble"
+
+compute:
+  prefer_local: true
+  fallback_to_cloud: true
+  local_engine: "ComfyUI"
+  cloud_providers:
+    - openai_dalle
+    - runway
+    - midjourney
+    - google_gemini_studio
+    - wan_2.1
+    - qwen_max
+
 # Your rule content
 
 - You can @ files here

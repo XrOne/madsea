@@ -4,7 +4,6 @@ globs:
 alwaysApply: true
 ---
 
-# Your rule content
-
-- You can @ files here
-- You can use markdown but dont have to
+Objectif général
+Convertir un storyboard (PDF ou images avec annotations) en vidéo stylisée, avec support multi-style (ombre chinoise "Déclics" ou labo "scientifique") via IA, en local ou via API.
+L'outil doit permettre un flux complet de parsing PDF → génération d'images → animation → vidéo.

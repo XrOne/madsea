@@ -7,92 +7,9 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <style>
-        body {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            background-color: #f8f9fa;
-        }
-        .header {
-            margin-bottom: 2rem;
-            border-bottom: 1px solid #e5e5e5;
-        }
-        .preview-container {
-            margin-top: 2rem;
-            text-align: center;
-        }
-        .preview-container video, .preview-container img {
-            max-width: 100%;
-            max-height: 500px;
-            margin: 10px auto;
-            display: block; /* Center video/img */
-            border: 1px solid #ddd;
-            background-color: #eee; /* Placeholder background */
-        }
-        .progress-container {
-            margin-top: 2rem;
-        }
-        .scene-preview {
-            display: flex;
-            flex-direction: column; /* Stack vertically */
-            margin-bottom: 1rem;
-            padding: 1rem;
-            border: 1px solid #dee2e6;
-            border-radius: 0.25rem;
-            background-color: white;
-            opacity: 0.7;
-            transition: opacity 0.3s ease-in-out;
-        }
-        .scene-preview.current {
-            opacity: 1.0;
-            border-color: #0d6efd;
-             box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-        }
-        .scene-images img {
-            max-width: 150px; /* Smaller previews */
-            max-height: 110px;
-            margin: 5px;
-            border: 1px solid #ccc;
-        }
-        .scene-info {
-            width: 100%; /* Take full width */
-        }
-        .scene-status {
-            font-style: italic;
-            font-size: 0.9em;
-            margin-top: 5px;
-        }
-         .error-message {
-            color: #dc3545; /* Bootstrap danger color */
-            font-size: 0.85em;
-            margin-top: 5px;
-        }
-        .style-card {
-            cursor: pointer;
-            transition: transform 0.2s;
-            height: 100%;
-        }
-        .style-card:hover {
-            transform: translateY(-5px);
-        }
-        .style-card.selected {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-        }
-        #scenesList {
-            max-height: 600px; /* Limit height and allow scrolling */
-            overflow-y: auto;
-            padding-right: 10px; /* Space for scrollbar */
-        }
-        .sticky-top-controls {
-             position: -webkit-sticky; /* Safari */
-             position: sticky;
-             top: 1rem; /* Adjust as needed */
-             z-index: 1020; /* Ensure it stays on top */
-         }
-         .form-control:disabled, .btn:disabled {
-             cursor: not-allowed;
-             opacity: 0.65;
-        }
+        body { padding-top: 2rem; background-color: #f8f9fa; }
+        .header { margin-bottom: 2rem; }
+        .card { margin-bottom: 1rem; }
     </style>
 </head>
 <body>
@@ -102,10 +19,13 @@
             <p class="lead">Convert your storyboard into a stylized animated video</p>
         </div>
 
+        <!-- Placeholder for alerts -->
+        <div id="alertPlaceholder"></div>
+
         <div class="row">
-            <div class="col-md-4 sticky-top-controls">
-                 <!-- Project Selection / Creation -->
-                 <div class="card mb-4">
+            <div class="col-md-12">
+                <!-- Project Selection / Creation -->
+                <div class="card">
                     <div class="card-header">
                         <h5><i class="bi bi-folder2-open"></i> Project</h5>
                     </div>
@@ -113,7 +33,7 @@
                         <div class="mb-3">
                             <label for="projectSelect" class="form-label">Select Project</label>
                             <select class="form-select" id="projectSelect">
-                                <option value="" selected disabled>-- Select a Project --</option>
+                                <option value="" selected disabled>-- Loading Projects --</option>
                                 <!-- Projects loaded via JS -->
                             </select>
                         </div>
@@ -124,12 +44,12 @@
                                 <button class="btn btn-outline-secondary" type="button" id="createProjectBtn"><i class="bi bi-plus-lg"></i> Create</button>
                             </div>
                         </div>
-                         <div id="projectStatus" class="mt-2"></div>
+                        <div id="projectStatus" class="mt-2"></div>
                     </div>
                 </div>
 
                 <!-- Upload Storyboard -->
-                <div class="card mb-4">
+                <div class="card mb-4" id="uploadCard" style="display: none;"> <!-- Hidden initially -->
                     <div class="card-header">
                         <h5><i class="bi bi-upload"></i> Upload Storyboard</h5>
                     </div>
@@ -137,663 +57,358 @@
                         <form id="uploadForm" enctype="multipart/form-data">
                             <div class="mb-3">
                                 <label for="storyboardFile" class="form-label">Select PDF or Images</label>
-                                <input class="form-control" type="file" id="storyboardFile" name="storyboard" accept=".pdf,.jpg,.jpeg,.png" disabled>
-                                <div class="form-text">Select a project before uploading.</div>
+                                <input class="form-control" type="file" id="storyboardFile" name="storyboard" accept=".pdf,.jpg,.jpeg,.png">
                             </div>
-                            <button type="submit" id="uploadBtn" class="btn btn-primary" disabled>Upload to Project</button>
+                            <button type="submit" id="uploadBtn" class="btn btn-primary">Upload to Project</button>
                         </form>
                         <div id="uploadStatus" class="mt-3"></div>
                     </div>
                 </div>
 
-                <!-- Style Selection -->
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5><i class="bi bi-palette"></i> Select Style</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row" id="styleContainer" style="max-height: 200px; overflow-y: auto;">
-                            <!-- Styles will be loaded here -->
-                            <p class="text-muted">Loading styles...</p>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Generation Options -->
-                <div class="card">
+                <div class="card mb-4" id="generationOptionsCard" style="display: none;"> <!-- Hidden initially -->
                     <div class="card-header">
                         <h5><i class="bi bi-gear"></i> Generation Options</h5>
                     </div>
                     <div class="card-body">
-                        <div class="mb-3">
-                             <label for="outputFilename" class="form-label">Output Video Name</label>
-                             <input type="text" class="form-control" id="outputFilename" placeholder="project_video.mp4">
-                        </div>
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="useCloudSwitch">
-                            <label class="form-check-label" for="useCloudSwitch">Use Cloud Resources</label>
-                        </div>
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="useAnimationSwitch">
-                            <label class="form-check-label" for="useAnimationSwitch">Use Animation Effects</label>
-                        </div>
-                        <button id="generateBtn" class="btn btn-success w-100 mb-2" disabled><i class="bi bi-film"></i> Generate Video</button>
-                        <button id="previewSceneBtn" class="btn btn-info w-100" disabled><i class="bi bi-eye"></i> Preview Selected Scene</button>
-                         <div class="form-text mt-1">Select project and upload storyboard first.</div>
+                         <!-- Style selection can be added back here later -->
+                        <button id="generateBtn" class="btn btn-success w-100 mb-2" disabled><i class="bi bi-images"></i> Generate Scene Images</button>
+                         <div class="form-text mt-1">Requires a selected project and uploaded storyboard.</div>
                     </div>
                 </div>
-            </div>
 
-            <div class="col-md-8">
                  <!-- Generation Progress -->
-                <div class="progress-container card mb-4">
+                <div class="card mb-4" id="progressCard" style="display: none;"> <!-- Hidden initially -->
                      <div class="card-header">
                          <h5><i class="bi bi-activity"></i> Generation Progress <span id="currentTaskLabel" class="badge bg-secondary ms-2">No Task</span></h5>
                      </div>
                      <div class="card-body">
-                    <div class="progress" style="height: 25px;">
+                        <div class="progress" style="height: 25px;">
                             <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
                         </div>
                         <p id="statusMessage" class="mt-2 text-muted">Ready</p>
                     </div>
                 </div>
 
-                <!-- Scene Details -->
-                <div id="scenesContainer" class="card mb-4">
-                     <div class="card-header">
-                         <h5><i class="bi bi-images"></i> Scenes <span id="sceneCountLabel" class="badge bg-info ms-2">0</span></h5>
-                     </div>
-                     <div class="card-body">
-                    <div id="scenesList">
-                            <p class="text-muted">Scenes will appear here during generation.</p>
+                <!-- Generated Images -->
+                <div id="generatedImagesCard" class="card mt-4" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Images Générées</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="generatedImagesList" class="row">
+                            <!-- Les images seront ajoutées ici dynamiquement -->
                         </div>
                     </div>
                 </div>
 
-                <!-- Video Preview -->
-                <div class="preview-container card">
-                     <div class="card-header">
-                        <h5><i class="bi bi-camera-reels"></i> Video Preview</h5>
-                     </div>
-                     <div class="card-body">
-                    <div id="videoPreview">
-                            <p class="text-muted">Video preview will appear here after generation is complete.</p>
-                        </div>
-                         <div id="downloadButtonContainer" class="mt-2"></div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
 
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // --- Global State ---
-        let selectedProject = null; // Store the name of the selected project
-        let uploadedFilename = null; // Store the filename (relative to project) after upload
-        let selectedStyle = 'default';
-        let useCloud = false;
-        let useAnimation = false;
-        let currentTaskId = null;
-        let statusCheckInterval = null;
-        let selectedSceneIndex = -1; // Track selected scene index (0-based)
-
-        // --- DOM Elements ---
-        const projectSelect = document.getElementById('projectSelect');
-        const newProjectNameInput = document.getElementById('newProjectName');
-        const createProjectBtn = document.getElementById('createProjectBtn');
-        const projectStatus = document.getElementById('projectStatus');
+        document.addEventListener('DOMContentLoaded', function() {
+            const createProjectBtn = document.getElementById('createProjectBtn');
+            const newProjectNameInput = document.getElementById('newProjectName');
+            const projectSelect = document.getElementById('projectSelect');
+            const projectStatus = document.getElementById('projectStatus');
+            const uploadCard = document.getElementById('uploadCard');
         const uploadForm = document.getElementById('uploadForm');
-        const storyboardFile = document.getElementById('storyboardFile');
-        const uploadBtn = document.getElementById('uploadBtn');
+            const storyboardFile = document.getElementById('storyboardFile');
+            const uploadBtn = document.getElementById('uploadBtn');
         const uploadStatus = document.getElementById('uploadStatus');
-        const styleContainer = document.getElementById('styleContainer');
-        const useCloudSwitch = document.getElementById('useCloudSwitch');
-        const useAnimationSwitch = document.getElementById('useAnimationSwitch');
-        const outputFilenameInput = document.getElementById('outputFilename');
+            const generationOptionsCard = document.getElementById('generationOptionsCard');
         const generateBtn = document.getElementById('generateBtn');
-        const previewSceneBtn = document.getElementById('previewSceneBtn');
+            const progressCard = document.getElementById('progressCard');
         const progressBar = document.getElementById('progressBar');
         const statusMessage = document.getElementById('statusMessage');
-        const scenesList = document.getElementById('scenesList');
-        const videoPreview = document.getElementById('videoPreview');
-        const downloadButtonContainer = document.getElementById('downloadButtonContainer');
-        const currentTaskLabel = document.getElementById('currentTaskLabel');
-        const sceneCountLabel = document.getElementById('sceneCountLabel');
+            const currentTaskLabel = document.getElementById('currentTaskLabel');
+            const generatedImagesCard = document.getElementById('generatedImagesCard');
+            const generatedImagesList = document.getElementById('generatedImagesList');
+            const alertPlaceholder = document.getElementById('alertPlaceholder');
+            console.log('Initial alertPlaceholder element:', alertPlaceholder); // LOG 1
+            let selectedProject = null;
+            let uploadedFilename = null;
+            let taskId = null;
 
+            // Helper pour afficher les alertes (utilisant Bootstrap)
+            function showAlert(title, message, type = 'info') {
+                console.log('showAlert called. alertPlaceholder is:', alertPlaceholder); // LOG 2
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = [
+                    `<div class="alert alert-${type} alert-dismissible fade show" role="alert">`,
+                    `   <strong>${title}:</strong> ${message}`,
+                    '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+                    '</div>'
+                ].join('');
+                // alertPlaceholder.innerHTML = ''; // Temporairement commenté pour débogage
+                alertPlaceholder.append(wrapper);
+            }
 
-        // --- Initialization ---
-        document.addEventListener('DOMContentLoaded', function() {
-            loadProjects();
-            loadStyles();
+            // Helper pour mettre à jour la barre de progression
+            function updateProgressBar(progress, total) {
+                const progressBar = document.getElementById('progressBar');
+                const progressValue = total > 0 ? Math.round((progress / total) * 100) : 0;
+                progressBar.style.width = `${progressValue}%`;
+                progressBar.setAttribute('aria-valuenow', progressValue);
+                progressBar.textContent = `${progressValue}%`;
+                document.getElementById('progressCard').style.display = 'block';
+            }
+
+            // Helper pour mettre à jour le message de statut
+            function updateStatusMessage(message) {
+                document.getElementById('statusMessage').textContent = message || 'En attente...';
+            }
+
+            // --- Project Management ---
+            async function loadProjects() {
+                console.log("Loading projects...");
+                projectSelect.disabled = true;
+                fetch('/projects') // Correct endpoint
+                    .then(response => response.ok ? response.json() : Promise.reject('Failed to load projects'))
+                    .then(projects => {
+                        projectSelect.innerHTML = '<option value="" selected disabled>-- Select a Project --</option>'; // Reset
+                        if (projects && projects.length > 0) {
+                            projects.forEach(project => {
+                                const option = document.createElement('option');
+                                option.value = project.name;
+                                option.textContent = project.name;
+                                projectSelect.appendChild(option);
+                            });
+                        } else {
+                            projectSelect.innerHTML = '<option value="" selected disabled>-- No projects found --</option>';
+                        }
+                        console.log("Projects loaded:", projects);
+                    })
+                    .catch(error => {
+                        console.error('Error loading projects:', error);
+                        projectStatus.innerHTML = `<div class="alert alert-warning">Could not load projects.</div>`;
+                        projectSelect.innerHTML = '<option value="" selected disabled>-- Error Loading --</option>';
+                    })
+                    .finally(() => {
+                        projectSelect.disabled = false;
+                    });
+            }
+
+            function createProject() {
+                const projectName = newProjectNameInput.value.trim();
+                if (!projectName) {
+                    projectStatus.innerHTML = '<div class="alert alert-warning">Please enter a project name.</div>';
+                    return;
+                }
+                console.log(`Creating project: ${projectName}`);
+                projectStatus.innerHTML = '<div class="alert alert-info">Creating project...</div>';
+                createProjectBtn.disabled = true;
+
+                fetch('/projects', { // Correct endpoint
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ name: projectName })
+                })
+                .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                .then(({ status, body }) => {
+                    if (status === 201) { // Check for 201 Created
+                        projectStatus.innerHTML = `<div class="alert alert-success">Project '${body.name}' created. Select it from the list.</div>`;
+                        newProjectNameInput.value = '';
+                        loadProjects(); // Reload project list
+                    } else {
+                        projectStatus.innerHTML = `<div class="alert alert-danger">Error: ${body.error || 'Failed to create project'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    projectStatus.innerHTML = '<div class="alert alert-danger">Network error creating project.</div>';
+                    console.error('Error creating project:', error);
+                })
+                .finally(() => {
+                    createProjectBtn.disabled = false;
+                });
+            }
+
+            function selectProject() {
+                selectedProject = projectSelect.value;
+                if (selectedProject) {
+                    console.log(`Project selected: ${selectedProject}`);
+                    projectStatus.innerHTML = `<div class="alert alert-secondary">Selected Project: <strong>${selectedProject}</strong></div>`;
+                    uploadCard.style.display = 'block'; // Show upload section
+                    uploadStatus.innerHTML = ''; // Clear previous upload status
+                    storyboardFile.value = ''; // Clear file input
+                    generationOptionsCard.style.display = 'block'; // Show generation options
+                    progressCard.style.display = 'none'; // Hide progress
+                    generateBtn.disabled = true; // Disable generate btn until upload
+                    uploadedFilename = null; // Reset filename
+                } else {
+                    projectStatus.innerHTML = '';
+                    uploadCard.style.display = 'none'; // Hide upload section
+                    generationOptionsCard.style.display = 'none';
+                    progressCard.style.display = 'none';
+                    uploadedFilename = null;
+                }
+            }
+
+            // --- Upload --- 
+            function handleUpload(e) {
+                e.preventDefault();
+                if (!selectedProject) {
+                    uploadStatus.innerHTML = `<div class="alert alert-warning">Please select a project first.</div>`;
+                    return;
+                }
+                if (!storyboardFile.files || storyboardFile.files.length === 0) {
+                    uploadStatus.innerHTML = `<div class="alert alert-warning">Please choose a file to upload.</div>`;
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('storyboard', storyboardFile.files[0]);
+                uploadStatus.innerHTML = `<div class="alert alert-info">Uploading to project '${selectedProject}'... <span class="spinner-border spinner-border-sm"></span></div>`;
+                uploadBtn.disabled = true;
+
+                fetch(`/projects/${selectedProject}/upload`, { method: 'POST', body: formData })
+                .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
+                .then(({ ok, body }) => {
+                    if (ok && body.success) {
+                        uploadedFilename = body.filename;
+                        uploadStatus.innerHTML = `<div class="alert alert-success">Uploaded <strong>${body.filename}</strong> to project '${selectedProject}'. Ready to generate.</div>`;
+                        generateBtn.disabled = false; // ENABLE GENERATE BUTTON
+                        progressCard.style.display = 'none'; // Hide progress from previous runs
+                    } else {
+                        uploadedFilename = null;
+                        uploadStatus.innerHTML = `<div class="alert alert-danger">Error: ${body.error || 'Upload failed'}</div>`;
+                        generateBtn.disabled = true;
+                    }
+                })
+                .catch(error => {
+                    uploadedFilename = null;
+                    uploadStatus.innerHTML = `<div class="alert alert-danger">Network error during upload.</div>`;
+                    console.error("Upload error:", error);
+                    generateBtn.disabled = true;
+                })
+                .finally(() => { uploadBtn.disabled = false; });
+            }
+
+            // --- Generation ---
+            async function startGeneration() {
+                if (!selectedProject) {
+                    showAlert('Erreur', 'Veuillez sélectionner un projet.', 'danger');
+                    return;
+                }
+                if (!uploadedFilename) {
+                    showAlert('Erreur', 'Veuillez télécharger un storyboard.', 'danger');
+                    return;
+                }
+
+                // Utilisation de valeurs par défaut pour le style et le nom de fichier de sortie car l'UI a été simplifiée
+                const style = 'declic'; // Style par défaut, à revoir si l'UI permet de sélectionner
+                const outputFilename = `${selectedProject}_generated_images_${Date.now()}`; // Nom de fichier par défaut
+
+                try {
+                    const response = await fetch(`/projects/${selectedProject}/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            storyboard_filename: uploadedFilename,
+                            style: style,
+                            output_filename: outputFilename // Utilisation d'un nom par défaut, pas de vidéo ici
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (data.success && data.task_id) {
+                        showAlert('Succès', 'Génération démarrée.', 'success');
+                        checkTaskStatus(data.task_id);
+                    } else {
+                        showAlert('Erreur', data.message || 'Erreur lors du démarrage de la génération.', 'danger');
+                    }
+                } catch (error) {
+                    showAlert('Erreur', 'Erreur lors de la communication avec le serveur.', 'danger');
+                    console.error('Error:', error);
+                }
+            }
+
+            async function checkTaskStatus(taskId) {
+                try {
+                    const response = await fetch(`/status/${taskId}`);
+                    const data = await response.json();
+
+                    updateProgressBar(data.progress, data.total);
+                    updateStatusMessage(data.message);
+
+                    if (data.status === 'complete') {
+                        showAlert('Succès', 'Génération terminée !', 'success');
+                        if (data.scenes) {
+                            displayGeneratedImages(data.scenes);
+                        }
+                    } else if (data.status === 'error') {
+                        showAlert('Erreur', data.message, 'danger');
+                } else {
+                        setTimeout(() => checkTaskStatus(taskId), 1000);
+                    }
+                } catch (error) {
+                    console.error('Error checking task status:', error);
+                    showAlert('Erreur', 'Erreur lors de la vérification du statut.', 'danger');
+                }
+            }
+
+            function displayGeneratedImages(scenes) {
+                const container = document.getElementById('generatedImagesList');
+                container.innerHTML = ''; // Nettoyer le conteneur
+
+                scenes.forEach((scene, index) => {
+                    if (scene.status === 'complete' && scene.generated_image_path) {
+                        const col = document.createElement('div');
+                        col.className = 'col-md-6 mb-4';
+                        
+                        const card = document.createElement('div');
+                        card.className = 'card h-100';
+                        
+                        const cardBody = document.createElement('div');
+                        cardBody.className = 'card-body';
+                        
+                        const title = document.createElement('h6');
+                        title.className = 'card-title';
+                        title.textContent = `Scène ${index + 1}`;
+                        
+                        const imageContainer = document.createElement('div');
+                        imageContainer.className = 'd-flex justify-content-between';
+                        
+                        // Image originale
+                        const originalImg = document.createElement('img');
+                        originalImg.src = `/projects/${selectedProject}/temp/${scene.image}`;
+                        originalImg.className = 'img-fluid w-50 me-2';
+                        originalImg.alt = 'Image originale';
+                        
+                        // Image générée
+                        const generatedImg = document.createElement('img');
+                        generatedImg.src = `/projects/${selectedProject}/generated/${scene.generated_image_path}`;
+                        generatedImg.className = 'img-fluid w-50';
+                        generatedImg.alt = 'Image générée';
+                        
+                        imageContainer.appendChild(originalImg);
+                        imageContainer.appendChild(generatedImg);
+                        
+                        cardBody.appendChild(title);
+                        cardBody.appendChild(imageContainer);
+                        card.appendChild(cardBody);
+                        col.appendChild(card);
+                        container.appendChild(col);
+                    }
+                });
+
+                document.getElementById('generatedImagesCard').style.display = 'block';
+            }
+
             // Add event listeners
             createProjectBtn.addEventListener('click', createProject);
             projectSelect.addEventListener('change', selectProject);
             uploadForm.addEventListener('submit', handleUpload);
             generateBtn.addEventListener('click', startGeneration);
-            previewSceneBtn.addEventListener('click', startScenePreview);
-             // Restore state? e.g., check status if a task ID is in URL or local storage
-            // checkUrlForTask();
+
+            // Initial load
+            loadProjects();
         });
-
-        // --- Project Management ---
-        function loadProjects() {
-             console.log("Loading projects...");
-             projectSelect.disabled = true;
-             fetch('/projects')
-                 .then(response => response.ok ? response.json() : Promise.reject('Failed to load projects'))
-                 .then(projects => {
-                     projectSelect.innerHTML = '<option value="" selected disabled>-- Select a Project --</option>'; // Reset
-                     projects.forEach(project => {
-                         const option = document.createElement('option');
-                         option.value = project.name;
-                         option.textContent = project.name;
-                         projectSelect.appendChild(option);
-                     });
-                     console.log("Projects loaded:", projects);
-                 })
-                 .catch(error => {
-                     console.error('Error loading projects:', error);
-                     projectStatus.innerHTML = `<div class="alert alert-warning">Could not load projects.</div>`;
-                 })
-                .finally(() => {
-                    projectSelect.disabled = false;
-                 });
-         }
-
-        function createProject() {
-             const projectName = newProjectNameInput.value.trim();
-             if (!projectName) {
-                 projectStatus.innerHTML = `<div class="alert alert-warning">Please enter a project name.</div>`;
-                 return;
-             }
-             console.log(`Creating project: ${projectName}`);
-             projectStatus.innerHTML = `<div class="alert alert-info">Creating project...</div>`;
-             createProjectBtn.disabled = true;
-
-             fetch('/projects', {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({ name: projectName })
-             })
-             .then(response => response.json().then(data => ({ status: response.status, body: data })))
-             .then(({ status, body }) => {
-                 if (status === 201 || status === 200) {
-                     projectStatus.innerHTML = `<div class="alert alert-success">Project '${body.name}' created.</div>`;
-                     newProjectNameInput.value = '';
-                     loadProjects(); // Reload project list
-                     // Automatically select the newly created project?
-                     // projectSelect.value = body.name;
-                     // selectProject();
-                 } else {
-                      projectStatus.innerHTML = `<div class="alert alert-danger">Error: ${body.error || 'Failed to create project'}</div>`;
-                 }
-             })
-             .catch(error => {
-                 console.error('Error creating project:', error);
-                 projectStatus.innerHTML = `<div class="alert alert-danger">Network error creating project.</div>`;
-             })
-             .finally(() => {
-                createProjectBtn.disabled = false;
-             });
-         }
-
-         function selectProject() {
-             selectedProject = projectSelect.value;
-             uploadedFilename = null; // Reset uploaded file on project change
-             uploadStatus.innerHTML = '';
-             generateBtn.disabled = true; // Require upload for the new project
-             if (selectedProject) {
-                 console.log(`Project selected: ${selectedProject}`);
-                 projectStatus.innerHTML = `<div class="alert alert-secondary">Selected Project: <strong>${selectedProject}</strong></div>`;
-                 storyboardFile.disabled = false;
-                 uploadBtn.disabled = false;
-                 // Clear previous task UI
-                 resetTaskUI();
-                 selectedSceneIndex = -1; // Reset scene selection
-                 // Set default output filename
-                 outputFilenameInput.value = `${selectedProject}_video.mp4`;
-                 // Load project-specific data? (e.g., previous uploads/results) - Future enhancement
-             } else {
-                 projectStatus.innerHTML = '';
-                 storyboardFile.disabled = true;
-                 uploadBtn.disabled = true;
-                 outputFilenameInput.value = '';
-             }
-         }
-
-        // --- Style Management ---
-        function loadStyles() {
-            fetch('/styles')
-                .then(response => response.ok ? response.json() : Promise.reject('Failed to load styles'))
-                .then(styles => {
-                    styleContainer.innerHTML = ''; // Clear loading message
-                    if (!styles || styles.length === 0) {
-                         styleContainer.innerHTML = '<p class="text-muted">No styles found.</p>';
-                         return;
-                    }
-                    styles.forEach(style => {
-                        const styleCard = document.createElement('div');
-                        styleCard.className = 'col-md-6 mb-3'; // Adjust layout if needed
-                        styleCard.innerHTML = `
-                            <div class="card style-card ${style.name === selectedStyle ? 'selected' : ''}" data-style="${style.name}">
-                                <div class="card-body">
-                                    <h6 class="card-title">${style.name}</h6>
-                                    <p class="card-text small text-muted">${style.description || 'No description'}</p>
-                                </div>
-                            </div>
-                        `;
-                        styleContainer.appendChild(styleCard);
-
-                        // Add click event
-                        styleCard.querySelector('.style-card').addEventListener('click', () => {
-                            document.querySelectorAll('.style-card').forEach(card => {
-                                card.classList.remove('selected');
-                            });
-                            styleCard.querySelector('.style-card').classList.add('selected');
-                            selectedStyle = style.name;
-                            console.log(`Style selected: ${selectedStyle}`);
-                        });
-                    });
-                })
-                .catch(error => {
-                    console.error('Error loading styles:', error);
-                     styleContainer.innerHTML = '<p class="text-danger">Error loading styles.</p>';
-                });
-        }
-
-        // --- Upload ---
-        function handleUpload(e) {
-            e.preventDefault();
-            if (!selectedProject) {
-                uploadStatus.innerHTML = `<div class="alert alert-warning">Please select a project first.</div>`;
-                return;
-            }
-            if (!storyboardFile.files || storyboardFile.files.length === 0) {
-                 uploadStatus.innerHTML = `<div class="alert alert-warning">Please choose a file to upload.</div>`;
-                 return;
-            }
-
-            const formData = new FormData();
-            formData.append('storyboard', storyboardFile.files[0]);
-
-            uploadStatus.innerHTML = `<div class="alert alert-info">Uploading to project '${selectedProject}'... <span class="spinner-border spinner-border-sm"></span></div>`;
-            uploadBtn.disabled = true;
-            generateBtn.disabled = true;
-
-            fetch(`/projects/${selectedProject}/upload`, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
-            .then(({ ok, body }) => {
-                if (ok && body.success) {
-                    uploadedFilename = body.filename; // Store relative filename
-                    uploadStatus.innerHTML = `<div class="alert alert-success">Uploaded <strong>${body.filename}</strong> to project '${selectedProject}'. Ready to generate.</div>`;
-                    generateBtn.disabled = false; // Enable generate button
-                } else {
-                    uploadedFilename = null;
-                    uploadStatus.innerHTML = `<div class="alert alert-danger">Error: ${body.error || 'Upload failed'}</div>`;
-                }
-            })
-            .catch(error => {
-                console.error("Upload error:", error);
-                uploadedFilename = null;
-                uploadStatus.innerHTML = `<div class="alert alert-danger">Network error during upload.</div>`;
-            })
-            .finally(() => {
-                 uploadBtn.disabled = false;
-                 // Re-enable generate only if upload was successful
-                 generateBtn.disabled = !uploadedFilename;
-                 previewSceneBtn.disabled = true; // Disable preview initially
-            });
-        }
-
-        // --- Generation ---
-        function startGeneration() {
-            if (currentTaskId && background_tasks[currentTaskId] && background_tasks[currentTaskId].status === 'running') {
-                 alert("A generation task is already running.");
-                 return;
-            }
-            if (!selectedProject) {
-                alert("Please select a project first.");
-                return;
-            }
-            if (!uploadedFilename) {
-                alert("Please upload a storyboard file to the selected project first.");
-                return;
-            }
-
-            // Stop previous interval if any
-            stopStatusCheck();
-            resetTaskUI();
-
-            generateBtn.disabled = true;
-            generateBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Starting...`;
-
-            statusMessage.textContent = 'Initializing generation...';
-            progressBar.style.width = '0%';
-            progressBar.textContent = '0%';
-            progressBar.classList.add('progress-bar-animated', 'progress-bar-striped');
-
-
-            // Get options
-            useCloud = useCloudSwitch.checked;
-            useAnimation = useAnimationSwitch.checked; // Note: backend needs to handle this flag
-            const outputName = outputFilenameInput.value.trim() || `${selectedProject}_video_${Date.now()}.mp4`;
-
-            console.log(`Starting generation for project ${selectedProject}, file: ${uploadedFilename}, style: ${selectedStyle}`);
-
-            fetch(`/projects/${selectedProject}/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    storyboard_filename: uploadedFilename,
-                    style: selectedStyle,
-                    use_cloud: useCloud,
-                    output_filename: outputName
-                    // Pass use_animation if backend uses it
-                })
-            })
-            .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
-            .then(({ ok, body }) => {
-                if (ok && body.success) {
-                    currentTaskId = body.task_id;
-                    currentTaskLabel.textContent = `Task: ${currentTaskId.substring(0, 8)}...`;
-                    currentTaskLabel.classList.remove('bg-secondary', 'bg-success', 'bg-danger');
-                    currentTaskLabel.classList.add('bg-primary');
-                    statusMessage.textContent = `Generation started (Task ID: ${currentTaskId}). Waiting for progress...`;
-                    generateBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Generating...`;
-                    // Start checking status
-                    statusCheckInterval = setInterval(checkGenerationStatus, 2000); // Check every 2 seconds
-                    previewSceneBtn.disabled = true; // Disable preview while full generation runs
-                } else {
-                    statusMessage.textContent = `Error starting generation: ${body.error || 'Unknown error'}`;
-                    currentTaskLabel.textContent = `Error`;
-                    currentTaskLabel.classList.remove('bg-secondary', 'bg-primary');
-                    currentTaskLabel.classList.add('bg-danger');
-                    generateBtn.disabled = false; // Re-enable on error
-                    generateBtn.innerHTML = `<i class="bi bi-film"></i> Generate Video`;
-                    previewSceneBtn.disabled = (selectedSceneIndex < 0); // Re-enable if a scene is selected
-                }
-            })
-            .catch(error => {
-                console.error("Start generation error:", error);
-                statusMessage.textContent = `Network error starting generation.`;
-                 currentTaskLabel.textContent = `Error`;
-                 currentTaskLabel.classList.remove('bg-primary', 'bg-success');
-                 currentTaskLabel.classList.add('bg-danger');
-                generateBtn.disabled = false; // Re-enable on error
-                generateBtn.innerHTML = `<i class="bi bi-film"></i> Generate Video`;
-                previewSceneBtn.disabled = (selectedSceneIndex < 0); // Re-enable if a scene is selected
-            });
-        }
-
-        // --- Status Checking & UI Update ---
-        function checkGenerationStatus() {
-            if (!currentTaskId || !selectedProject) {
-                stopStatusCheck();
-                return;
-            }
-
-            fetch(`/status/${currentTaskId}`)
-                .then(response => response.ok ? response.json() : Promise.reject(`Task status not found (${response.status})`))
-                .then(status => {
-                    console.log("Status update:", status);
-                    // Update progress bar
-                    const progress = Math.round(status.progress || 0);
-                    progressBar.style.width = `${progress}%`;
-                    progressBar.textContent = `${progress}%`;
-                    progressBar.setAttribute('aria-valuenow', progress);
-
-                    // Update status message
-                    statusMessage.textContent = status.message || 'Processing...';
-
-                    // Update scenes list
-                    updateScenesList(status.scenes || [], status.current_scene);
-
-                    // Handle task completion or failure
-                    if (status.status === 'completed' || status.status === 'failed') {
-                        stopStatusCheck();
-                        generateBtn.disabled = false; // Re-enable button
-                        generateBtn.innerHTML = `<i class="bi bi-film"></i> Generate Video`;
-                         progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
-
-
-                        if (status.status === 'completed') {
-                            progressBar.classList.add('bg-success');
-                             currentTaskLabel.classList.remove('bg-primary', 'bg-danger');
-                             currentTaskLabel.classList.add('bg-success');
-                             currentTaskLabel.textContent = `Task: ${currentTaskId.substring(0, 8)}... (Completed)`;
-                        // Show video preview
-                        if (status.result_video) {
-                                 const videoFilename = status.result_video.split('/').pop().split('\\').pop(); // Get base filename
-                            videoPreview.innerHTML = `
-                                    <video controls preload="metadata">
-                                        <source src="/projects/${selectedProject}/results/${videoFilename}" type="video/mp4">
-                                    Your browser does not support the video tag.
-                                </video>
-                                `;
-                                downloadButtonContainer.innerHTML = `
-                                     <a href="/projects/${selectedProject}/results/${videoFilename}" class="btn btn-primary" download="${videoFilename}"><i class="bi bi-download"></i> Download Video</a>
-                                `;
-                            } else {
-                                 videoPreview.innerHTML = `<p class="text-warning">Generation completed, but no result video path found.</p>`;
-                                 downloadButtonContainer.innerHTML = '';
-                            }
-                        } else { // Failed
-                            progressBar.classList.add('bg-danger');
-                            statusMessage.textContent = `Failed: ${status.message}`;
-                            currentTaskLabel.classList.remove('bg-primary', 'bg-success');
-                            currentTaskLabel.classList.add('bg-danger');
-                            currentTaskLabel.textContent = `Task: ${currentTaskId.substring(0, 8)}... (Failed)`;
-                            videoPreview.innerHTML = `<p class="text-danger">Generation failed. See status message above.</p>`;
-                            downloadButtonContainer.innerHTML = '';
-                        }
-                    } else {
-                         // Still running or queued
-                         progressBar.classList.remove('bg-success', 'bg-danger');
-                         currentTaskLabel.classList.remove('bg-success', 'bg-danger', 'bg-secondary');
-                         currentTaskLabel.classList.add('bg-primary');
-                         if (!progressBar.classList.contains('progress-bar-animated')) {
-                             progressBar.classList.add('progress-bar-animated', 'progress-bar-striped');
-                         }
-                    }
-                })
-                .catch(error => {
-                    console.error('Error checking status:', error);
-                    statusMessage.textContent = `Error fetching status: ${error}. Stopping updates.`;
-                    currentTaskLabel.textContent = `Error`;
-                    currentTaskLabel.classList.remove('bg-primary', 'bg-success');
-                    currentTaskLabel.classList.add('bg-danger');
-                    stopStatusCheck();
-                    generateBtn.disabled = false; // Re-enable button on fetch error
-                    generateBtn.innerHTML = `<i class="bi bi-film"></i> Generate Video`;
-                    previewSceneBtn.disabled = (selectedSceneIndex < 0); // Re-enable if a scene is selected
-                });
-        }
-
-        function stopStatusCheck() {
-             if (statusCheckInterval) {
-                clearInterval(statusCheckInterval);
-                statusCheckInterval = null;
-                console.log("Status polling stopped.");
-            }
-        }
-
-         function resetTaskUI() {
-             stopStatusCheck();
-             currentTaskId = null;
-             progressBar.style.width = '0%';
-             progressBar.textContent = '0%';
-             progressBar.classList.remove('bg-success', 'bg-danger');
-             progressBar.classList.add('progress-bar-animated', 'progress-bar-striped');
-             statusMessage.textContent = 'Ready';
-             scenesList.innerHTML = '<p class="text-muted">Scenes will appear here during generation.</p>';
-             sceneCountLabel.textContent = '0';
-             videoPreview.innerHTML = '<p class="text-muted">Video preview will appear here after generation is complete.</p>';
-             downloadButtonContainer.innerHTML = '';
-             currentTaskLabel.textContent = 'No Task';
-             currentTaskLabel.classList.remove('bg-primary', 'bg-success', 'bg-danger');
-             currentTaskLabel.classList.add('bg-secondary');
-             generateBtn.disabled = !uploadedFilename; // Only enable if a file was uploaded for the project
-             generateBtn.innerHTML = `<i class="bi bi-film"></i> Generate Video`;
-             previewSceneBtn.disabled = true; // Disabled until scene selected
-         }
-
-
-        // --- Scene Display ---
-        function updateScenesList(scenes, currentSceneIndex) { // currentSceneIndex is 1-based
-            if (!scenes || scenes.length === 0) {
-                scenesList.innerHTML = '<p class="text-muted">Waiting for scenes...</p>';
-                 sceneCountLabel.textContent = '0';
-                return;
-            }
-             sceneCountLabel.textContent = scenes.length;
-
-            // Avoid flickering if content is identical? Maybe too complex for now.
-            // const currentHtml = scenesList.innerHTML; // Rough check
-            let newHtml = '';
-
-            scenes.forEach((scene, index) => {
-                const sceneNum = index + 1;
-                const isCurrent = sceneNum === currentSceneIndex;
-                const isSelected = index === selectedSceneIndex;
-                const cardClass = `scene-preview ${isCurrent ? 'current' : ''} ${isSelected ? 'border-primary border-2' : ''}`;
-                const statusText = scene.error ? 'Error' : (scene.generated_image ? 'Generated' : (isCurrent ? 'Processing...' : 'Pending'));
-                const statusClass = scene.error ? 'text-danger' : (scene.generated_image ? 'text-success' : 'text-muted');
-
-                 // Use project-relative paths for preview URLs
-                 const originalImageFilename = scene.image ? scene.image.split('/').pop().split('\\').pop() : '';
-                 const generatedImageFilename = scene.generated_image ? scene.generated_image.split('/').pop().split('\\').pop() : '';
-
-                 const originalImageUrl = originalImageFilename ? `/projects/${selectedProject}/results/${originalImageFilename}` : ''; // Assuming originals are copied/accessible in results/generated? Or temp? Adjust path if needed.
-                 const generatedImageUrl = generatedImageFilename ? `/projects/${selectedProject}/results/${generatedImageFilename}` : '';
-
-                let imageHtml = '<p class="text-muted small">No images yet.</p>';
-                 if (originalImageUrl) {
-                     imageHtml = `<img src="${originalImageUrl}" alt="Original Scene ${sceneNum}" title="Original Scene ${sceneNum}">`;
-                     if (generatedImageUrl) {
-                         imageHtml += ` <i class="bi bi-arrow-right"></i> <img src="${generatedImageUrl}" alt="Generated Scene ${sceneNum}" title="Generated Scene ${sceneNum}">`;
-                     } else if (isCurrent) {
-                          imageHtml += ` <i class="bi bi-arrow-right"></i> <span class="spinner-border spinner-border-sm"></span> Generating...`;
-                     }
-                 }
-
-                 const errorHtml = scene.error ? `<div class="error-message"><i class="bi bi-exclamation-triangle-fill"></i> ${scene.error}</div>` : '';
-
-                newHtml += `
-                    <div class="${cardClass}" data-scene-index="${index}" style="cursor: pointer;" title="Click to select Scene ${sceneNum} for preview">
-                        <div class="scene-info">
-                            <h6>Scene ${sceneNum} <span class="scene-status ${statusClass}">(${statusText})</span></h6>
-                            <p class="small text-muted">${scene.text || 'No text description'}</p>
-                            <div class="scene-images">${imageHtml}</div>
-                            ${errorHtml}
-                        </div>
-                    </div>
-                `;
-            });
-             // Only update DOM if HTML changed significantly (simple check)
-            // if (newHtml !== currentHtml) {
-                scenesList.innerHTML = newHtml;
-                // Add click listeners for scene selection AFTER updating innerHTML
-                document.querySelectorAll('.scene-preview').forEach(el => {
-                    el.addEventListener('click', () => selectScene(parseInt(el.dataset.sceneIndex)));
-                });
-            // }
-        }
-
-        function selectScene(index) {
-            if (!currentTaskId || (background_tasks[currentTaskId] && background_tasks[currentTaskId].status === 'running')) {
-                // Don't allow selection change during active generation?
-                // Or maybe allow it but reset preview button? For now, just log.
-                 console.log("Scene selection ignored during active generation or without task.");
-                 return;
-            }
-             console.log(`Selected scene index: ${index}`);
-             selectedSceneIndex = index;
-             // Update visual selection (re-render list or just update classes)
-             document.querySelectorAll('.scene-preview').forEach((el, i) => {
-                 el.classList.toggle('border-primary', i === index);
-                 el.classList.toggle('border-2', i === index);
-             });
-             // Enable preview button
-             previewSceneBtn.disabled = false;
-         }
-
-        // --- Scene Preview ---
-        async function startScenePreview() {
-            if (selectedSceneIndex < 0 || !selectedProject || !currentTaskId) {
-                 alert("Please select a project and a scene from a generation task first.");
-                 return;
-            }
-
-            const taskData = background_tasks[currentTaskId];
-            if (!taskData || !taskData.scenes || selectedSceneIndex >= taskData.scenes.length) {
-                 alert("Selected scene data not found in the current task.");
-                 return;
-            }
-
-            const sceneData = taskData.scenes[selectedSceneIndex];
-            const sceneNum = selectedSceneIndex + 1;
-
-            console.log(`Starting preview generation for Project: ${selectedProject}, Scene Index: ${selectedSceneIndex}, Style: ${selectedStyle}`);
-
-            previewSceneBtn.disabled = true;
-            previewSceneBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Previewing Scene ${sceneNum}...`;
-            statusMessage.textContent = `Requesting preview for Scene ${sceneNum}...`;
-
-            // Find the specific scene element to show temporary status
-            const sceneElement = scenesList.querySelector(`.scene-preview[data-scene-index="${selectedSceneIndex}"] .scene-status`);
-            if (sceneElement) sceneElement.textContent = '(Requesting Preview...)';
-
-             try {
-                 const response = await fetch(`/projects/${selectedProject}/preview_scene`, {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({
-                         task_id: currentTaskId, // Send task ID to get context
-                         scene_index: selectedSceneIndex,
-                         style: selectedStyle,
-                         use_cloud: useCloudSwitch.checked
-                         // Add other relevant options if needed
-                     })
-                 });
-
-                 const data = await response.json();
-
-                 if (response.ok && data.success) {
-                     console.log("Scene preview generated:", data.generated_image_path);
-                     statusMessage.textContent = `Preview generated for Scene ${sceneNum}.`;
-                     // Update the specific scene display immediately
-                     if (taskData && taskData.scenes) {
-                         taskData.scenes[selectedSceneIndex].generated_image = data.generated_image_path;
-                         taskData.scenes[selectedSceneIndex].error = null; // Clear previous error if any
-                         updateScenesList(taskData.scenes, taskData.current_scene);
-                     }
-                 } else {
-                      console.error("Scene preview error:", data.error);
-                      statusMessage.textContent = `Error generating preview for Scene ${sceneNum}: ${data.error || 'Unknown error'}`;
-                       if (taskData && taskData.scenes) {
-                         taskData.scenes[selectedSceneIndex].error = data.error || 'Preview failed';
-                         updateScenesList(taskData.scenes, taskData.current_scene);
-                     }
-                 }
-
-            } catch (error) {
-                 console.error('Network/fetch error during scene preview:', error);
-                 statusMessage.textContent = `Network error generating preview for Scene ${sceneNum}.`;
-                  if (taskData && taskData.scenes) {
-                     taskData.scenes[selectedSceneIndex].error = 'Network error during preview';
-                     updateScenesList(taskData.scenes, taskData.current_scene);
-                 }
-            } finally {
-                 previewSceneBtn.disabled = false;
-                 previewSceneBtn.innerHTML = `<i class="bi bi-eye"></i> Preview Selected Scene`;
-                 // Reset temporary status in scene list? The updateScenesList call should handle it.
-            }
-        }
-
     </script>
 </body>
 </html>

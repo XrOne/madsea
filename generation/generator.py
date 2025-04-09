@@ -98,7 +98,10 @@ class ImageGenerator:
         cache_key = None
         final_output_path = self.output_dir / f"scene_{scene_index:04d}_generated.png"
         
-        if self.cache_manager:
+        # Disable cache for debugging? Add a flag?
+        use_cache = False # FORCE CACHE DISABLED FOR DEBUGGING
+
+        if self.cache_manager and use_cache:
             try:
                 # Create a robust cache key
                 ref_img_hash = self._get_file_hash(image_path) if Path(image_path).exists() else None
@@ -692,9 +695,9 @@ class CloudGenerator(BaseGenerator):
                 return self._create_placeholder_image(output_path)
             
             if image_data and isinstance(image_data, bytes):
-            # Save the image
-            with open(output_path, "wb") as f:
-                f.write(image_data)
+                # Save the image
+                with open(output_path, "wb") as f:
+                    f.write(image_data)
                 logger.info(f"Cloud generated image saved to: {output_path}")
                 return str(output_path)
             else:
@@ -838,4 +841,57 @@ class CloudGenerator(BaseGenerator):
 
         except Exception as e:
             logger.error(f"Error generating image with Midjourney API: {e}", exc_info=True)
+            return None
+
+    async def _get_image_data(self, filename, subfolder, image_type):
+        """ Fetches the actual image bytes from the ComfyUI /view endpoint. """
+        try:
+            comfyui_url = self.api_manager.get_comfyui_url()
+            params = {"filename": filename, "subfolder": subfolder, "type": image_type}
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{comfyui_url}/view", params=params) as response:
+                    if response.status == 200:
+                        return await response.read()
+                    else:
+                        logger.error(f"Error fetching image from ComfyUI /view: {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Exception fetching image data: {e}")
+            return None
+
+    async def _get_prompt_status(self, prompt_id):
+        """ Gets the execution status of a specific prompt from ComfyUI /prompt endpoint. """    
+        try:
+            comfyui_url = self.api_manager.get_comfyui_url()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{comfyui_url}/prompt/{prompt_id}") as response:
+                    if response.status == 200:
+                        # The prompt endpoint itself doesn't give status, it gives the submitted prompt
+                        # We need the history endpoint for status/outputs
+                        # This function might be misnamed or redundant if we only use history
+                        return await response.json() # Returns the original prompt
+                    else:
+                        # logger.error(f"Error getting prompt status {prompt_id}: {response.status}")
+                        # It's normal to get 404 if the prompt doesn't exist / hasn't run?
+                        return None # Or specific error status?
+        except Exception as e:
+            logger.error(f"Exception getting prompt status for {prompt_id}: {e}")
+            return None
+
+    async def _get_history(self, prompt_id):
+        """ Fetches the execution history which contains outputs for a given prompt_id. """
+        try:
+            comfyui_url = self.api_manager.get_comfyui_url()
+            async with aiohttp.ClientSession() as session:
+                # Fetch history for the specific prompt ID
+                async with session.get(f"{comfyui_url}/history/{prompt_id}") as response:
+                    if response.status == 200:
+                        history = await response.json()
+                        # logger.debug(f"History for {prompt_id}: {json.dumps(history, indent=2)}")
+                        return history
+                    else:
+                        logger.error(f"Error getting history for prompt {prompt_id}: {response.status}")
+                        return None
+        except Exception as e:
+            logger.error(f"Exception getting history for {prompt_id}: {e}")
             return None

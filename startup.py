@@ -315,116 +315,28 @@ async def main():
         # await api_manager.close_session()
         # return
 
-    # Start web interface if requested
-    if args.web:
-        logger.info("Démarrage de l'interface web...")
-        try:
-            from ui.app import start_web_app
-            # Pass managers to the web app factory/startup function
-            start_web_app(config, api_manager, model_manager, cache_manager, security_manager)
-            # Note: start_web_app might block here, or run in background
-            # Need to handle cleanup like closing the api_manager session appropriately
-        except ImportError:
-             logger.error("Module UI non trouvé. Impossible de démarrer l'interface web.")
-        except Exception as e:
-             logger.error(f"Erreur lors du démarrage de l'interface web: {e}")
-        finally:
-            # Ensure API manager session is closed when web app stops (if not handled internally)
-            # This might need signal handling or a different structure if start_web_app blocks
-             await api_manager.close_session()
-        return # Exit after starting web app usually
+    # === Execution Mode Decision ===
 
-    # --- CLI Workflow (if not --web) ---
-    logger.info("Démarrage du flux de travail CLI...")
-
-    # Override config with command line arguments (if applicable after manager init)
-    if args.storyboard:
-        config["storyboard_path"] = args.storyboard
-    if args.style:
-        config["style"] = args.style
-    if args.output:
-        config["output_path"] = args.output
-    if args.use_cloud:
-        config["use_cloud"] = True # This might influence which generator is chosen
-
-    # Check if required parameters are provided for CLI mode
-    if "storyboard_path" not in config or not config["storyboard_path"]:
-        logger.error("Aucun chemin de storyboard fourni pour le mode CLI. Utilisez --storyboard ou spécifiez dans la config.")
-        await api_manager.close_session()
-        return
-
-    # Create output directory if it doesn't exist
-    output_path = Path(config.get("output_path", "output/output.mp4"))
-    output_dir = output_path.parent
-    os.makedirs(output_dir, exist_ok=True)
-    logger.info(f"Répertoire de sortie: {output_dir}")
-
-    # Initialize components, passing managers
-    logger.info("Initialisation des composants du pipeline...")
+    # --- Web Interface Mode (ONLY) ---
+    logger.info("Lancement du mode Interface Web par défaut.")
     try:
-        # TODO: Update constructors of these classes to accept managers
-        parser = StoryboardParser(config, cache_manager=cache_manager)
-        style_manager = StyleManager(config, model_manager=model_manager, cache_manager=cache_manager)
-        # Pass all relevant managers to ImageGenerator
-        generator = ImageGenerator(config, style_manager, model_manager, api_manager, cache_manager)
-        assembler = VideoAssembler(config, cache_manager=cache_manager)
-        logger.info("Composants initialisés.")
+        from ui.app import start_web_app
+        # Pass managers needed by the web app
+        start_web_app(config, api_manager, model_manager, cache_manager, security_manager)
+        # start_web_app is likely blocking; cleanup might need signal handling
+        # If it returns, we should close the session
+        logger.info("Serveur Web arrêté.")
+    except ImportError:
+         logger.error("Module UI ('ui.app') non trouvé. Impossible de démarrer l'interface web.")
     except Exception as e:
-         logger.error(f"Erreur lors de l'initialisation des composants: {e}")
-         await api_manager.close_session()
-         return
-
-    # --- Execute Pipeline ---
-    generated_video_path = None
-    try:
-        # Process storyboard
-        logger.info(f"Analyse du storyboard: {config['storyboard_path']}")
-        scenes = parser.parse(config["storyboard_path"])
-        if not scenes:
-             logger.error("Aucune scène extraite du storyboard.")
-             raise ValueError("Parsing failed")
-
-        # Generate images for each scene
-        logger.info(f"Génération des images avec le style: {config.get('style', 'default')}")
-        generated_images = []
-        # Use asyncio.gather for parallel generation if ImageGenerator.generate is async
-        generation_tasks = []
-        for i, scene in enumerate(scenes):
-            logger.info(f"Préparation de la génération pour la scène {i+1}/{len(scenes)}")
-            # Assuming generator.generate becomes async
-            generation_tasks.append(generator.generate(scene["image"], scene["text"], scene_index=i))
-
-        # Wait for all images to be generated
-        generated_image_paths = await asyncio.gather(*generation_tasks)
-
-        # Filter out potential None results from failed generations
-        valid_image_paths = [path for path in generated_image_paths if path]
-        if len(valid_image_paths) != len(scenes):
-             logger.warning(f"{len(scenes) - len(valid_image_paths)} scènes n'ont pas pu être générées.")
-             # Decide if we should proceed or stop
-
-        if not valid_image_paths:
-             logger.error("Aucune image n'a pu être générée.")
-             raise ValueError("Image generation failed completely")
-
-        # Assemble video
-        logger.info(f"Assemblage de la vidéo: {output_path}")
-        # Pass image paths, not PIL objects if generator saves files
-        generated_video_path = assembler.create_video(valid_image_paths, scenes)
-
-        logger.info(f"Vidéo créée avec succès: {generated_video_path}")
-
-    except Exception as e:
-        logger.error(f"Une erreur est survenue durant l'exécution du pipeline: {e}", exc_info=True) # Log traceback
+         logger.error(f"Erreur lors du démarrage ou de l'exécution de l'interface web: {e}", exc_info=True)
     finally:
-        # Cleanup: close API session, release models?
-        logger.info("Nettoyage des ressources...")
-        await api_manager.close_session()
-        # Potentially release models from ModelManager if loaded directly
-        # model_manager.release_all_models() # Example method
+        # Ensure session is closed if web app stops or fails to start
+        logger.info("Nettoyage des ressources après tentative de lancement Web...")
+        if api_manager and api_manager.session and not api_manager.session.closed:
+            await api_manager.close_session()
 
-    logger.info("Script terminé.")
-    return generated_video_path
+    # logger.info("Script terminé (ou serveur web lancé).") # Less relevant now
 
 
 if __name__ == "__main__":
