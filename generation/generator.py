@@ -695,9 +695,9 @@ class CloudGenerator(BaseGenerator):
                 return self._create_placeholder_image(output_path)
             
             if image_data and isinstance(image_data, bytes):
-                # Save the image
-                with open(output_path, "wb") as f:
-                    f.write(image_data)
+            # Save the image
+            with open(output_path, "wb") as f:
+                f.write(image_data)
                 logger.info(f"Cloud generated image saved to: {output_path}")
                 return str(output_path)
             else:
