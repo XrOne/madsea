@@ -329,75 +329,179 @@
             }
 
             async function checkTaskStatus(taskId) {
-                try {
-                    const response = await fetch(`/status/${taskId}`);
-                    const data = await response.json();
+                let statusInterval = null; // Keep interval ID local to the function call that starts polling
+                const pollInterval = 5000; // Poll every 5 seconds
 
-                    updateProgressBar(data.progress, data.total);
-                    updateStatusMessage(data.message);
-
-                    if (data.status === 'complete') {
-                        showAlert('Succès', 'Génération terminée !', 'success');
-                        if (data.scenes) {
-                            displayGeneratedImages(data.scenes);
+                // Function to perform a single status check
+                const performCheck = async () => {
+                    try {
+                        const response = await fetch(`/status/${taskId}`);
+                        if (!response.ok) {
+                            console.error(`Error fetching status ${taskId}: ${response.status}`);
+                            showStatusMessage(`Erreur ${response.status} lors de la récupération du statut.`);
+                            if (statusInterval) clearInterval(statusInterval); // Stop polling on fetch error
+                            currentTaskLabel.textContent = 'Error';
+                            return;
                         }
-                    } else if (data.status === 'error') {
-                        showAlert('Erreur', data.message, 'danger');
-                } else {
-                        setTimeout(() => checkTaskStatus(taskId), 1000);
+                        const data = await response.json();
+
+                        // --- Log received data for debugging ---
+                        console.debug("Received Task Status Data:", data);
+
+                        // --- Update UI elements --- 
+                        updateProgressBar(data.progress || 0, data.total || 0); // Use total, not total_scenes if available
+                        updateStatusMessage(data.message || 'En attente...');
+                        currentTaskLabel.textContent = `Task: ${taskId.substring(0, 8)}... (${data.status || '?'.toUpperCase()})`;
+                        progressCard.style.display = 'block';
+
+                        // --- Display Images --- 
+                        // Check if scene data exists and is an array before calling display
+                        if (data && data.scenes && Array.isArray(data.scenes)) {
+                            // *** PASS THE DATA OBJECT EXPLICITLY ***
+                            displayGeneratedImages(data, selectedProject);
+                        }
+
+                        // --- Check for Completion/Failure --- 
+                        const isComplete = data.status === 'complete';
+                        const isFailed = data.status === 'error'; // Check for 'error' status
+                        const progressComplete = data.total > 0 && data.progress >= data.total;
+
+                        if (isComplete || isFailed || progressComplete) {
+                            console.log(`Task ${taskId} finished with status: ${data.status}`);
+                            if (statusInterval) {
+                                clearInterval(statusInterval);
+                                statusInterval = null;
+                            }
+                            showStatusMessage(`Génération terminée (Statut: ${data.status})`);
+                            updateProgressBar(data.progress || data.total || 0, data.total || 1); // Ensure bar is full/correct
+                            currentTaskLabel.textContent = `Task: ${taskId.substring(0, 8)}... (Finished)`;
+                            if (isFailed) {
+                                showAlert('Échec de la tâche', data.message || "La génération a échoué.", 'danger');
+                            }
+                        }
+
+                    } catch (error) {
+                        console.error("Error in performCheck:", error);
+                        showStatusMessage("Erreur lors de la vérification du statut.");
+                        if (statusInterval) clearInterval(statusInterval); // Stop polling on JS error
+                        currentTaskLabel.textContent = 'Error';
                     }
-                } catch (error) {
-                    console.error('Error checking task status:', error);
-                    showAlert('Erreur', 'Erreur lors de la vérification du statut.', 'danger');
+                };
+
+                // --- Start Polling --- 
+                console.log(`Starting status polling for task ${taskId}`);
+                await performCheck(); // Perform initial check immediately
+                if (!statusInterval && !['complete', 'error'].includes(background_tasks[taskId]?.status)) { // Check initial status before setting interval
+                     statusInterval = setInterval(performCheck, pollInterval); // Start polling only if not already finished
+                } else {
+                    console.log(`Task ${taskId} already finished or polling active. Not starting new interval.`);
                 }
             }
 
-            function displayGeneratedImages(scenes) {
+            function displayGeneratedImages(data, selectedProject) { // Now accepts the full data object
                 const container = document.getElementById('generatedImagesList');
                 container.innerHTML = ''; // Nettoyer le conteneur
+                generatedImagesCard.style.display = 'none'; // Hide initially
 
-                scenes.forEach((scene, index) => {
-                    if (scene.status === 'complete' && scene.generated_image_path) {
-                        const col = document.createElement('div');
-                        col.className = 'col-md-6 mb-4';
-                        
-                        const card = document.createElement('div');
-                        card.className = 'card h-100';
-                        
-                        const cardBody = document.createElement('div');
-                        cardBody.className = 'card-body';
-                        
-                        const title = document.createElement('h6');
-                        title.className = 'card-title';
-                        title.textContent = `Scène ${index + 1}`;
-                        
-                        const imageContainer = document.createElement('div');
-                        imageContainer.className = 'd-flex justify-content-between';
-                        
-                        // Image originale
-                        const originalImg = document.createElement('img');
-                        originalImg.src = `/projects/${selectedProject}/temp/${scene.image}`;
-                        originalImg.className = 'img-fluid w-50 me-2';
-                        originalImg.alt = 'Image originale';
-                        
-                        // Image générée
-                        const generatedImg = document.createElement('img');
-                        generatedImg.src = `/projects/${selectedProject}/generated/${scene.generated_image_path}`;
-                        generatedImg.className = 'img-fluid w-50';
-                        generatedImg.alt = 'Image générée';
-                        
-                        imageContainer.appendChild(originalImg);
-                        imageContainer.appendChild(generatedImg);
-                        
-                        cardBody.appendChild(title);
-                        cardBody.appendChild(imageContainer);
-                        card.appendChild(cardBody);
-                        col.appendChild(card);
-                        container.appendChild(col);
+                // Ensure data.scenes exists and is an array
+                if (!data || !data.scenes || !Array.isArray(data.scenes)) {
+                    console.warn("displayGeneratedImages called with invalid or missing scenes data.", data);
+                    return; // Do nothing if scene data is bad
+                }
+
+                console.log(`Displaying ${data.scenes.length} scenes for project ${selectedProject}`);
+
+                data.scenes.forEach((scene, index) => {
+                    console.debug(`Processing scene ${index}:`, scene);
+                    const col = document.createElement('div');
+                    col.className = 'col-md-6 mb-4';
+
+                    const card = document.createElement('div');
+                    card.className = 'card h-100';
+
+                    const cardBody = document.createElement('div');
+                    cardBody.className = 'card-body';
+
+                    const title = document.createElement('h6');
+                    title.className = 'card-title';
+                    title.textContent = `Scène ${index + 1} (${scene.status || 'unknown'})`;
+
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'd-flex justify-content-between align-items-start'; // Align items top
+
+                    // --- Original Image --- 
+                    const originalContainer = document.createElement('div');
+                    originalContainer.className = 'w-50 me-2 text-center';
+                    const originalImg = document.createElement('img');
+                    let originalFilename = 'placeholder.png'; // Default placeholder
+                    if (scene.image && typeof scene.image === 'string'){
+                         originalFilename = scene.image.split('/').pop(); 
+                         originalImg.src = `/projects/${selectedProject}/temp/${originalFilename}`;
+                         originalImg.alt = 'Image originale';
+                         originalImg.onerror = () => { // Handle image loading errors
+                             console.warn(`Failed to load original image: ${originalImg.src}`);
+                             originalImg.alt = 'Original Image Not Found';
+                             // Optionally replace with a placeholder
+                             originalImg.src = '#'; // Or a real placeholder URL
+                             originalImg.style.border = '1px dashed red';
+                         }
+                    } else {
+                         originalImg.alt = 'No original image path';
+                         originalImg.src = '#';
+                         originalImg.style.border = '1px dashed grey';
                     }
+                    originalImg.className = 'img-fluid'; 
+                    originalContainer.appendChild(originalImg);
+                    originalContainer.appendChild(document.createTextNode('Original'));
+
+                    // --- Generated Image --- 
+                    const generatedContainer = document.createElement('div');
+                    generatedContainer.className = 'w-50 ms-2 text-center';
+                    const generatedImg = document.createElement('img');
+                    generatedImg.id = `generated-img-${index}`;
+                    generatedImg.className = 'img-fluid generated-placeholder'; // Placeholder style
+                    generatedImg.alt = 'Image générée (en attente)';
+                    generatedImg.src = '#'; // Start with placeholder
+                    generatedImg.style.border = '1px dashed lightblue'; // Indicate placeholder
+
+                    if (scene.status === 'complete' && scene.generated_image_path) {
+                        const generatedFilename = scene.generated_image_path.split('/').pop();
+                        generatedImg.src = `/projects/${selectedProject}/generated/${generatedFilename}`;
+                        generatedImg.alt = 'Image générée';
+                        generatedImg.classList.remove('generated-placeholder');
+                        generatedImg.style.border = 'none';
+                        generatedImg.onerror = () => {
+                            console.warn(`Failed to load generated image: ${generatedImg.src}`);
+                            generatedImg.alt = 'Generated Image Not Found';
+                            generatedImg.src = '#'; 
+                            generatedImg.style.border = '1px dashed orange';
+                        }
+                    } else if (scene.status === 'generating') {
+                        generatedImg.alt = 'Génération en cours...';
+                        generatedImg.style.border = '1px dashed blue';
+                    } else if (scene.status === 'error') {
+                         generatedImg.alt = `Erreur: ${scene.error || 'Inconnue'}`;
+                         generatedImg.src = '#'; // Maybe an error icon?
+                         generatedImg.style.border = '1px dashed red';
+                    }
+                    generatedContainer.appendChild(generatedImg);
+                    generatedContainer.appendChild(document.createTextNode('Generated'));
+
+
+                    imageContainer.appendChild(originalContainer);
+                    imageContainer.appendChild(generatedContainer);
+
+                    cardBody.appendChild(title);
+                    cardBody.appendChild(imageContainer);
+                    card.appendChild(cardBody);
+                    col.appendChild(card);
+                    container.appendChild(col);
                 });
 
-                document.getElementById('generatedImagesCard').style.display = 'block';
+                // Make the card visible only if there are scenes to display
+                if (data.scenes.length > 0) {
+                    generatedImagesCard.style.display = 'block';
+                }
             }
 
             // Add event listeners

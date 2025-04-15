@@ -20,7 +20,7 @@ import threading
 import asyncio
 import uuid
 from pathlib import Path
-from flask import Flask, request, render_template, jsonify, send_file, redirect, url_for, current_app
+from flask import Flask, request, render_template, jsonify, send_file, redirect, url_for, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 
 # Add the project root to the Python path
@@ -68,8 +68,8 @@ def index():
     try:
         style_manager = current_app.config['style_manager']
         config = current_app.config['config']
-        # Get available styles
-        styles = style_manager.list_styles() if style_manager else []
+    # Get available styles
+    styles = style_manager.list_styles() if style_manager else []
 
         # Get status of recent/running tasks (simplified view for index)
         # Maybe show the latest task or a summary
@@ -84,9 +84,9 @@ def index():
         # TODO: Add project listing/selection here
         projects = list_projects()
     
-        return render_template(
-            'index.html',
-            styles=styles,
+    return render_template(
+        'index.html',
+        styles=styles,
             status=latest_task_status,
             task_id=latest_task_id,
             config=config,
@@ -160,21 +160,21 @@ def upload_storyboard(project_name):
 
         upload_folder = project_dir / 'uploads'
 
-        if 'storyboard' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
+    if 'storyboard' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
     
-        file = request.files['storyboard']
-        if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+    file = request.files['storyboard']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
     
-        filename = secure_filename(file.filename)
+    filename = secure_filename(file.filename)
         upload_path = upload_folder / filename
-        file.save(upload_path)
+    file.save(upload_path)
     
         logger.info(f"Uploaded '{filename}' to project '{project_name}'")
-        return jsonify({
-            'success': True,
-            'filename': filename,
+    return jsonify({
+        'success': True,
+        'filename': filename,
             'path': str(upload_path) # Return path relative to project?
         })
     except ValueError as e:
@@ -379,32 +379,59 @@ def get_tasks():
 
 @app.route('/projects/<project_name>/temp/<path:filename>')
 def get_temp_file(project_name, filename):
-    """ Serves files from the project's temporary directory. """
+    logger.info(f"--- Request received for temp file: Project={project_name}, File={filename} ---")
     try:
-        project_dir = get_project_dir(project_name)
-        if not project_dir.exists():
+        # 1. Sanitize Inputs
+        project_name_safe = secure_filename(project_name)
+        filename_safe = secure_filename(filename)
+        logger.debug(f"Sanitized inputs: Project={project_name_safe}, File={filename_safe}")
+        if project_name != project_name_safe or filename != filename_safe:
+            logger.warning("Potential unsafe characters detected in project name or filename.")
+
+        # 2. Get Base Project Directory from Config
+        if 'UPLOAD_FOLDER' not in current_app.config:
+            logger.error("CRITICAL: UPLOAD_FOLDER not found in Flask app config!")
+            return jsonify({"error": "Server configuration error [UPLOAD_FOLDER]"}), 500
+
+        projects_base_dir = Path(current_app.config['UPLOAD_FOLDER'])
+        logger.debug(f"Projects base directory from config: {projects_base_dir}")
+        if not projects_base_dir.is_dir():
+            logger.error(f"Projects base directory does not exist: {projects_base_dir}")
+            return jsonify({"error": "Server configuration error [Base Dir Missing]"}), 500
+
+        # 3. Construct Full Path to Expected File
+        project_dir = projects_base_dir / project_name_safe
+        base_temp_parser_dir = project_dir / 'temp' / 'parser'
+        file_path = base_temp_parser_dir / filename_safe
+        logger.debug(f"Expected full file path: {file_path}")
+
+        # 4. Check Directory Existence
+        if not project_dir.is_dir():
+            logger.warning(f"Project directory check failed: {project_dir}")
             return jsonify({"error": "Project not found"}), 404
 
-        # Sanitize filename
-        safe_filename = secure_filename(filename) # Basic sanitization
-        # More robust path traversal check might be needed depending on usage
-        file_path = project_dir / 'temp' / safe_filename
+        if not base_temp_parser_dir.is_dir():
+            logger.warning(f"Base directory for temp parser files check failed: {base_temp_parser_dir}")
+            # Check file next
 
-        if not file_path.is_file():
-            logger.warning(f"Temp file not found: {file_path}")
-            return jsonify({"error": "File not found in temp directory"}), 404
+        # 5. Check File Existence and Serve
+        logger.debug(f"Checking if file exists: {file_path.is_file()}")
+        if file_path.is_file():
+            logger.info(f"File exists. Attempting to serve using send_from_directory: Directory='{base_temp_parser_dir}', Filename='{filename_safe}'")
+            try:
+                response = send_from_directory(base_temp_parser_dir, filename_safe)
+                logger.info(f"send_from_directory successful for {filename_safe}")
+                return response
+            except Exception as send_e:
+                logger.error(f"Error during send_from_directory for {filename_safe}: {send_e}", exc_info=True)
+                return jsonify({"error": "Error serving file after finding it"}), 500
+        else:
+            logger.warning(f"File not found at expected path: {file_path}")
+            return jsonify({"error": "Temporary file not found"}), 404
 
-        # Determine mimetype (optional but good practice)
-        # mimetype = mimetypes.guess_type(file_path)[0]
-        logger.debug(f"Serving temp file: {file_path}")
-        return send_file(file_path) # Add mimetype=mimetype if needed
-
-    except ValueError as e:
-         # From get_project_dir
-         return jsonify({"error": str(e)}), 400
     except Exception as e:
-         logger.error(f"Error serving temp file '{filename}' for project '{project_name}': {e}", exc_info=True)
-         return jsonify({"error": "Failed to serve file"}), 500
+        logger.error(f"--- UNEXPECTED ERROR in get_temp_file: {e} ---", exc_info=True)
+        return jsonify({"error": "Internal server error serving temp file"}), 500
 
 
 @app.route('/projects/<project_name>/generated/<path:filename>')
@@ -535,7 +562,7 @@ def manage_config():
             # Update running config in app? Requires restart or careful update.
             current_app.config['config'] = new_config_data
             logger.info(f"Configuration saved to {config_path}")
-            return jsonify({'success': True, 'message': 'Configuration updated'})
+        return jsonify({'success': True, 'message': 'Configuration updated'})
         except Exception as e:
             logger.error(f"Error saving configuration: {e}")
             return jsonify({'error': 'Failed to save configuration'}), 500

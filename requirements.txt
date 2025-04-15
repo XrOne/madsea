@@ -1,14 +1,14 @@
 # Core dependencies
 python-dotenv>=1.0.0
-numpy>=1.24.0
-Pillow>=10.0.0
+numpy==1.26.3
+Pillow==10.2.0
 tqdm>=4.66.0
 
 # PDF and image processing
-pymupdf>=1.22.0
-pdfplumber>=0.10.0
-pytesseract>=0.3.10
-opencv-python>=4.8.0
+PyMuPDF==1.23.8
+pdfplumber==0.10.3
+pytesseract==0.3.10
+opencv-python==4.9.0.80
 
 # AI and ML
 torch>=2.0.0

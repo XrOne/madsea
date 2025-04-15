@@ -298,19 +298,26 @@ class LocalGenerator(BaseGenerator):
             model_manager (ModelManager): Model manager instance
             cache_manager (CacheManager): Cache manager instance
         """
-        super().__init__(config, api_manager=api_manager, cache_manager=cache_manager, model_manager=model_manager)
-        self.comfyui_host = config.get("comfyui", {}).get("host", "127.0.0.1")
-        self.comfyui_port = config.get("comfyui", {}).get("port", 8188)
-        self.workflow_dir = Path(config.get("comfyui", {}).get("workflow_dir", "workflows"))
+        super().__init__(config, api_manager, cache_manager, model_manager=model_manager)
+        logger.debug("Initializing LocalGenerator...") # Add log
+        self.model_manager = model_manager
+        self.comfyui_host = config.get("comfyui_host", "127.0.0.1")
+        self.comfyui_port = config.get("comfyui_port", 8188)
+        self.base_comfyui_url = f"http://{self.comfyui_host}:{self.comfyui_port}"
+        self.comfyui_client_id = str(uuid.uuid4()) 
         
-        # Create workflow directory if it doesn't exist
+        # Explicitly initialize workflow_dir and ensure it's a Path object
+        workflow_dir_path = config.get("workflow_dir", "workflows")
+        self.workflow_dir = Path(workflow_dir_path)
+        logger.debug(f"Workflow directory set to: {self.workflow_dir}")
         os.makedirs(self.workflow_dir, exist_ok=True)
         
-        # Base URL for ComfyUI API
-        self.api_url = f"http://{self.comfyui_host}:{self.comfyui_port}/api"
+        self.comfyui_output_node_id = None 
+        self.is_comfyui_available = self._check_comfyui_connection()
         
-        # Check if ComfyUI is available
-        self._check_comfyui_connection()
+        if not self.is_comfyui_available:
+            logger.warning("ComfyUI is not available. Local generation will fail.")
+        logger.debug("LocalGenerator initialized.")
     
     def _check_comfyui_connection(self):
         """
@@ -322,9 +329,11 @@ class LocalGenerator(BaseGenerator):
                 logger.info("ComfyUI is available")
             else:
                 logger.warning(f"ComfyUI returned status code {response.status_code}")
+            return True
         except Exception as e:
             logger.warning(f"Could not connect to ComfyUI: {e}")
             logger.warning("Make sure ComfyUI is running and accessible")
+            return False
     
     async def generate_image(self, reference_image_path, prompt, style_params, output_path):
         """
@@ -347,23 +356,32 @@ class LocalGenerator(BaseGenerator):
                  return self._create_placeholder_image(output_path)
 
             # Update workflow with parameters (needs ModelManager)
-            workflow = self._update_workflow_params(workflow, reference_image_path, prompt, style_params)
+            workflow, output_node_id = self._update_workflow_params(workflow, reference_image_path, prompt, style_params)
+            self.comfyui_output_node_id = output_node_id # Store for result fetching
 
-            # Submit workflow to ComfyUI using APIManager
-            logger.debug("Submitting workflow to ComfyUI...")
-            result_data = await self._submit_workflow(workflow)
-            if not result_data or 'prompt_id' not in result_data:
-                logger.error(f"Failed to submit workflow to ComfyUI or invalid response: {result_data}")
-                return self._create_placeholder_image(output_path)
+            # 4. Submit workflow to ComfyUI via WebSocket/API
+            logger.debug(f"Submitting workflow for prompt: {prompt[:50]}...")
+            prompt_id = await self._submit_workflow_ws(workflow)
 
-            prompt_id = result_data['prompt_id']
-            logger.info(f"Workflow submitted to ComfyUI. Prompt ID: {prompt_id}")
+            if not prompt_id:
+                logger.error("Failed to submit workflow to ComfyUI.")
+                self._create_placeholder_image(output_path)
+                return False
 
-            # Wait for and download the result using APIManager
-            image_data = await self._get_workflow_result(prompt_id)
+            logger.info(f"Workflow submitted via WebSocket. Prompt ID: {prompt_id}")
+
+            # 5. Wait for completion signal via WebSocket, then fetch image via HTTP /view
+            image_details = await self._wait_for_completion_ws(prompt_id)
+
+            if image_details:
+                 logger.info(f"Workflow completed. Fetching image via HTTP /view: {image_details}")
+                 image_data = await self._fetch_image_http(image_details)
+            else:
+                 logger.error(f"Did not receive completion details or image info via WebSocket for {prompt_id}.")
+                 image_data = None
 
             if image_data:
-                 # Save the received image data
+                 # Save the received image data to the final output path
                  with open(output_path, "wb") as f:
                      f.write(image_data)
                  logger.info(f"Image successfully generated by ComfyUI and saved to: {output_path}")
@@ -384,24 +402,37 @@ class LocalGenerator(BaseGenerator):
             style_params (dict): Style parameters
             
         Returns:
-            dict: Workflow template
+            dict or None: Workflow template or None if loading fails
         """
-        # Get workflow template path from style parameters or use default
+        logger.debug("Loading workflow template...")
+        # Check if self.workflow_dir exists before using it
+        if not hasattr(self, 'workflow_dir') or not self.workflow_dir:
+             logger.error("_load_workflow_template called but self.workflow_dir is not set!")
+             return None
+             
         template_name = style_params.get("workflow_template", "default_controlnet.json")
         template_path = self.workflow_dir / template_name
+        logger.debug(f"Attempting to load workflow from: {template_path}")
         
-        # Check if template exists
-        if not template_path.exists():
-            # Use default template
-            logger.warning(f"Workflow template {template_path} not found, using default")
-            # Create a basic default workflow
+        if not template_path.is_file():
+            logger.warning(f"Workflow template {template_path} not found. Attempting to create default.")
+            try:
             return self._create_default_workflow()
+            except Exception as e_create:
+                 logger.error(f"Failed to create default workflow: {e_create}")
+                 return None
         
-        # Load template
+        try:
         with open(template_path, 'r') as f:
             workflow = json.load(f)
-        
+            logger.debug(f"Successfully loaded workflow template: {template_name}")
         return workflow
+        except json.JSONDecodeError as e_json:
+             logger.error(f"Error decoding JSON from workflow file {template_path}: {e_json}")
+             return None
+        except Exception as e_load:
+            logger.error(f"Error loading workflow file {template_path}: {e_load}")
+            return None
     
     def _create_default_workflow(self):
         """
@@ -502,9 +533,10 @@ class LocalGenerator(BaseGenerator):
         Returns:
             dict: Updated workflow
         """
-        # This is a simplified implementation
-        # In a real implementation, this would update the specific nodes in the workflow
+        output_node_id = None # Initialize here
+        negative_prompt = style_params.get("negative_prompt", "low quality, blurry") # Get negative prompt
         
+        try:
         # Find the prompt node and update it
         for node_id, node in workflow.items():
             if node.get("class_type") == "CLIPTextEncode" and "positive" in node_id.lower():
@@ -512,116 +544,281 @@ class LocalGenerator(BaseGenerator):
             
             # Find the image loader node and update it
             if node.get("class_type") == "LoadImage":
-                node["inputs"]["image"] = reference_image_path
+                    node["inputs"]["image"] = reference_image_path
             
             # Update LoRA if specified in style parameters
             if node.get("class_type") == "LoraLoader" and "lora_name" in style_params:
                 node["inputs"]["lora_name"] = style_params["lora_name"]
                 node["inputs"]["strength"] = style_params.get("lora_strength", 0.8)
         
-        return workflow
-    
-    async def _submit_workflow(self, workflow):
-        """
-        Submit workflow to ComfyUI using APIManager
-        
-        Args:
-            workflow (dict): Workflow dictionary
-            
-        Returns:
-            dict or None: Response from ComfyUI or None on failure
-        """
-        try:
-            # Submit workflow
-            response = await self.api_manager.call_api(
-                "comfyui",
-                method="POST",
-                endpoint_suffix="/prompt",
-                data={"prompt": workflow}
-            )
-            
-            if response:
-                 logger.debug(f"ComfyUI submission response: {response}")
-                 return response
-            else:
-                 logger.error("Failed to submit workflow to ComfyUI.")
-                 return None
+            return workflow, output_node_id
         except Exception as e:
-            logger.error(f"Error submitting workflow to ComfyUI: {e}")
-            raise
+            logger.error(f"Error updating workflow parameters: {e}", exc_info=True)
+            return None, None
     
-    async def _get_workflow_result(self, prompt_id, poll_interval=1, timeout=120):
-        """
-        Wait for workflow completion and download the result using APIManager.
+    async def _submit_workflow_ws(self, workflow):
+        """Submits the workflow via WebSocket and returns the prompt_id."""
+        prompt_id = None
+        ws = None # Initialize ws
+        # Correctly construct the WebSocket URL from base host/port
+        url = f"ws://{self.comfyui_host}:{self.comfyui_port}/ws?clientId={self.comfyui_client_id}"
+        logger.debug(f"Attempting WebSocket connection to: {url}")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Set a reasonable connection timeout
+                async with session.ws_connect(url, timeout=10.0) as ws:
+                    logger.info("WebSocket connected for submission.")
+                    # Ensure client_id is included in the payload sent
+                    payload = {"prompt": workflow, "client_id": self.comfyui_client_id}
+                    await ws.send_json(payload)
+                    logger.debug("Workflow JSON sent via WebSocket.")
+
+                    # Wait briefly for the initial response containing the prompt_id
+                    # Set a timeout for receiving the prompt_id confirmation
+                    try:
+                        async for msg in ws.timeout(5.0): # Timeout for waiting for prompt_id
+                            if msg.type == aiohttp.WSMsgType.TEXT:
+                                data = json.loads(msg.data)
+                                logger.debug(f"WS RCV (submit): {data}") # Log received data
+                                # Check for 'status' type first, common for initial response
+                                if data.get("type") == "status" and isinstance(data.get("data"), dict) and data["data"].get("sid") == self.comfyui_client_id:
+                                     # This might just be a confirmation of connection, not prompt_id
+                                     logger.debug(f"Received status confirmation for client {self.comfyui_client_id}")
+                                     # Keep listening for the actual prompt execution message
+                                     pass
+                                # Check for 'execution_start' or 'status' containing prompt_id
+                                elif data.get("type") == "execution_start" and isinstance(data.get("data"), dict) and data["data"].get("prompt_id"):
+                                     prompt_id = data["data"]["prompt_id"]
+                                     logger.info(f"Workflow submitted via WebSocket (detected via 'execution_start'). Prompt ID: {prompt_id}")
+                                     break
+                                elif data.get("type") == "executing" and isinstance(data.get("data"), dict) and data["data"].get("prompt_id"):
+                                     # Sometimes the first message is already 'executing'
+                                     prompt_id = data["data"]["prompt_id"]
+                                     logger.info(f"Workflow submitted via WebSocket (detected via 'executing'). Prompt ID: {prompt_id}")
+                                     break
+                                # Add handling for potential error messages from ComfyUI here if needed
+                            elif msg.type == aiohttp.WSMsgType.ERROR:
+                                logger.error(f"WebSocket connection error during submission response: {ws.exception()}")
+                                break
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSING):
+                                 logger.warning("WebSocket closed unexpectedly while waiting for submission confirmation.")
+                                 break
+                    except asyncio.TimeoutError:
+                         logger.error("Timeout waiting for prompt_id confirmation after WebSocket submission.")
+
+                    if not prompt_id:
+                         logger.error("Did not receive prompt_id after WebSocket submission.")
+
+        except asyncio.TimeoutError:
+             logger.error(f"Timeout connecting WebSocket for submission to {url}")
+        except aiohttp.ClientConnectorError as e:
+             logger.error(f"Connection error during WebSocket submission: {e}")
+        except Exception as e:
+            logger.error(f"Error submitting workflow via WebSocket: {e}", exc_info=True)
+        finally:
+            # Ensure websocket is closed if it was opened
+            if ws and not ws.closed:
+                await ws.close()
+                logger.debug("WebSocket closed after submission attempt.")
+
+        return prompt_id
+
+    async def _wait_for_completion_ws(self, prompt_id, timeout=180):
+        """Waits for workflow completion signal via WebSocket and returns image details."""
+        if not self.comfyui_output_node_id:
+             logger.error("Cannot get result: Output Node ID is not set.")
+             return None
+
+        if not prompt_id:
+             logger.error("Cannot wait for completion: Invalid prompt_id provided.")
+             return None
         
-        Args:
-            prompt_id (str): The ID of the submitted prompt.
-            poll_interval (int): Seconds between polling attempts.
-            timeout (int): Maximum seconds to wait for completion.
-            
-        Returns:
-            bytes or None: The generated image data as bytes, or None on failure/timeout.
-        """
+        image_details = None
         start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                logger.debug(f"Polling ComfyUI history for prompt_id: {prompt_id}")
-                history_response = await self.api_manager.call_api(
-                    "comfyui",
-                    method="GET",
-                    endpoint_suffix=f"/history/{prompt_id}"
-                )
+        ws = None # Initialize ws
+        # Correctly construct the WebSocket URL from base host/port
+        url = f"ws://{self.comfyui_host}:{self.comfyui_port}/ws?clientId={self.comfyui_client_id}"
+        logger.debug(f"Attempting WebSocket connection to monitor prompt {prompt_id}: {url}")
 
-                if history_response and prompt_id in history_response:
-                    prompt_history = history_response[prompt_id]
-                    logger.debug(f"History received: Keys={list(prompt_history.keys())}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                 # Set a reasonable connection timeout
+                 async with session.ws_connect(url, timeout=10.0) as ws:
+                    logger.info(f"WebSocket connected to monitor prompt {prompt_id}.")
 
-                    # Check outputs - Structure depends on workflow's SaveImage node
-                    if "outputs" in prompt_history:
-                        outputs = prompt_history["outputs"]
-                        # Find the output node (e.g., the SaveImage node ID)
-                        # This requires knowing the output node ID from the workflow.
-                        # Let's assume the SaveImage node was ID "11" as in the default workflow
-                        output_node_id = "11" # Hardcoded for now, should be dynamic ideally
+                    while time.time() - start_time < timeout:
+                        remaining_time = timeout - (time.time() - start_time)
+                        if remaining_time <= 0:
+                             logger.error(f"Overall timeout ({timeout}s) reached waiting for completion signal for prompt {prompt_id}")
+                             break
 
-                        if output_node_id in outputs and outputs[output_node_id].get("images"):
-                            image_info = outputs[output_node_id]["images"][0]
-                            filename = image_info.get("filename")
-                            subfolder = image_info.get("subfolder")
-                            img_type = image_info.get("type") # output or temp?
+                        try:
+                             # Use remaining time for receive timeout, minimum 1s
+                             msg = await ws.receive(timeout=max(1.0, remaining_time))
+                        except asyncio.TimeoutError:
+                             # This is expected if no message arrives within the receive timeout
+                             logger.debug(f"WebSocket receive timeout while waiting for prompt {prompt_id}. Continuing to wait.")
+                             continue # Continue loop until overall timeout
 
-                            if filename and img_type == 'output':
-                                logger.info(f"Workflow {prompt_id} completed. Output image: {filename}")
-                                # Download the image using /view endpoint
-                                image_data = await self.api_manager.call_api(
-                                    "comfyui",
-                                    method="GET",
-                                    endpoint_suffix="/view",
-                                    params={"filename": filename, "subfolder": subfolder, "type": img_type}
-                                    # APIManager needs to handle non-json response here (bytes)
-                                )
-                                if isinstance(image_data, bytes):
-                                     logger.info(f"Successfully downloaded image {filename}")
-                                     return image_data
+                        # Handle different message types
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            try:
+                                data = json.loads(msg.data)
+                                msg_type = data.get("type")
+                                msg_data = data.get("data", {})
+
+                                # --- LOGGING (Improved) ---
+                                log_prefix = f"WS RCV Prmpt {prompt_id}:"
+                                log_content = f"Type={msg_type}"
+                                if isinstance(msg_data, dict):
+                                     current_msg_prompt_id = msg_data.get("prompt_id")
+                                     node_id = msg_data.get("node")
+                                     # Only log details if it matches our prompt_id
+                                     if current_msg_prompt_id == prompt_id:
+                                          if msg_type == "progress":
+                                               log_content += f", Node={node_id}, value={msg_data.get('value')}, max={msg_data.get('max')}"
+                                          elif msg_type == "executing":
+                                               log_content += f", Node={node_id}" # Prompt ID is already known
+                                          elif msg_type == "executed":
+                                               log_content += f", Node={node_id}, outputs={list(msg_data.get('outputs', {}).keys())}"
+                                          elif msg_type == "status":
+                                               q_rem = msg_data.get("status", {}).get("exec_info", {}).get("queue_remaining", "N/A")
+                                               log_content += f", Queue={q_rem}"
+                                          else: # Other types or unexpected format
+                                               log_content += f", DataKeys={list(msg_data.keys())}"
+                                     else:
+                                          # Minimal log for messages belonging to other prompts
+                                          log_content += f" (Ignoring msg for prompt {current_msg_prompt_id})"
+                                elif msg_data is not None:
+                                     log_content += f", Data={str(msg_data)[:100]}" # Log snippet if not dict
                                 else:
-                                     logger.error(f"Failed to download image {filename} from ComfyUI /view endpoint. Response: {image_data}")
-                                     return None
-                            else:
-                                 logger.debug(f"Output node {output_node_id} found, but image data not yet ready or not final output.")
-                        else:
-                             logger.debug(f"Output node {output_node_id} not found in outputs or no images generated yet.")
-                    else:
-                         logger.debug(f"Prompt {prompt_id} still executing or history format unexpected.")
+                                    log_content += ", Data=None"
 
-                # Wait before polling again
-                await asyncio.sleep(poll_interval)
+                                logger.debug(f"{log_prefix} {log_content}")
+                                # --- END LOGGING ---
 
-            except Exception as e:
-                logger.error(f"Error polling ComfyUI history: {e}")
-                await asyncio.sleep(poll_interval * 2) # Longer wait on error
+                                # Check if the message is for the prompt we are interested in
+                                if isinstance(msg_data, dict) and msg_data.get("prompt_id") == prompt_id:
+                                    if msg_type == "executed":
+                                        executed_node_id = msg_data.get("node")
+                                        # IMPORTANT: Ensure self.comfyui_output_node_id is correct!
+                                        if executed_node_id == self.comfyui_output_node_id:
+                                            logger.info(f"Execution finished signal received for TARGET output node {self.comfyui_output_node_id} (Prompt ID: {prompt_id}).")
+                                            outputs = msg_data.get("outputs", {})
+                                            if outputs.get("images"):
+                                                # Assuming the first image is the one we want
+                                                image_info = outputs["images"][0]
+                                                filename = image_info.get("filename")
+                                                subfolder = image_info.get("subfolder", "") # ComfyUI uses subfolders
+                                                img_type = image_info.get("type", "temp") # Usually 'temp' or 'output'
 
-        logger.error(f"Timeout waiting for ComfyUI workflow {prompt_id} to complete after {timeout} seconds.")
-        return None
+                                                if filename:
+                                                    logger.info(f"Image details found in execution signal: filename={filename}, subfolder={subfolder}, type={img_type}")
+                                                    image_details = {
+                                                         "filename": filename,
+                                                         "subfolder": subfolder,
+                                                         "type": img_type
+                                                    }
+                                                    break # SUCCESS: Got the details, exit loop
+                                                else:
+                                                    logger.error("Execution signal for target node received, but 'filename' missing in image output details.")
+                                            else:
+                                                logger.error("Execution signal for target node received, but 'images' field missing or empty in output.")
+                                            
+                                            # Exit loop even if details weren't found, as our node finished (likely error state)
+                                            if not image_details:
+                                                 logger.error(f"Exiting wait loop because target node {self.comfyui_output_node_id} executed but failed to yield image details.")
+                                            break # Exit loop
+
+                                    # Optional: Check for error messages specific to this prompt_id
+                                    # (Needs knowledge of ComfyUI error message format via WS)
+
+                            except json.JSONDecodeError:
+                                logger.warning(f"Received non-JSON text message: {msg.data}")
+                            except Exception as parse_e:
+                                logger.error(f"Error parsing WebSocket message: {parse_e}", exc_info=True)
+
+                        elif msg.type == aiohttp.WSMsgType.ERROR:
+                            logger.error(f"WebSocket connection error while waiting for prompt {prompt_id}: {ws.exception()}")
+                            break # Exit loop on error
+                        elif msg.type == aiohttp.WSMsgType.CLOSED:
+                             logger.warning(f"WebSocket connection closed by server while waiting for prompt {prompt_id}.")
+                             break # Exit loop
+                        elif msg.type == aiohttp.WSMsgType.CLOSING:
+                             logger.warning(f"WebSocket connection closing while waiting for prompt {prompt_id}.")
+                             break # Exit loop
+
+            # Check if we successfully got image_details after the loop
+            if not image_details:
+                # Log error only if we didn't break due to timeout (already logged)
+                if remaining_time > 0:
+                     logger.error(f"Loop finished for prompt {prompt_id} without extracting image details (target node execution signal not found or details missing).")
+
+        except asyncio.TimeoutError:
+            # This catches the connection timeout
+            logger.error(f"Timeout connecting WebSocket to monitor prompt {prompt_id} at {url}")
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"Connection error during WebSocket monitoring for {prompt_id}: {e}")
+        except Exception as e:
+            # Catch any other unexpected errors during the wait loop
+            logger.error(f"Unexpected error during WebSocket result retrieval for {prompt_id}: {e}", exc_info=True)
+            image_details = None # Ensure details are None on error
+        finally:
+            # Ensure websocket is closed if it was opened
+            if ws and not ws.closed:
+                await ws.close()
+                logger.debug(f"WebSocket closed after monitoring attempt for {prompt_id}.")
+
+
+        return image_details # Return details dict or None
+
+    async def _fetch_image_http(self, image_details):
+        """ Fetches the image data from ComfyUI /view endpoint using HTTP GET. """
+        if not image_details or not image_details.get("filename"):
+             logger.error("Cannot fetch image: Invalid image_details provided.")
+             return None
+
+        filename = image_details["filename"]
+        # Ensure subfolder is handled correctly (might be empty string)
+        subfolder = image_details.get("subfolder", "")
+        img_type = image_details.get("type", "temp") # Default to 'temp' if not specified
+
+        # Construct base URL correctly
+        base_url = f"http://{self.comfyui_host}:{self.comfyui_port}"
+        url = f"{base_url}/view"
+        # Parameters should be URL-encoded by aiohttp automatically
+        params = {"filename": filename, "type": img_type}
+        if subfolder: # Only include subfolder if it's not empty
+             params["subfolder"] = subfolder
+
+        logger.info(f"Fetching image from ComfyUI: {url} with params: {params}")
+
+        try:
+             # Consider adding a timeout for the image download request
+             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120.0)) as session: # 2 min timeout
+                  async with session.get(url, params=params) as response:
+                       if response.status == 200:
+                            image_data = await response.read()
+                            if not image_data:
+                                 logger.error(f"Error fetching image {filename}: Received empty response (0 bytes).")
+                                 return None
+                            logger.info(f"Successfully fetched {len(image_data)} bytes for image {filename}.")
+                            return image_data
+                       else:
+                            # Log the error response body for more details
+                            error_body = await response.text()
+                            logger.error(f"Error fetching image {filename} from ComfyUI /view: {response.status} - {error_body}")
+                            return None
+        except asyncio.TimeoutError:
+             logger.error(f"Timeout during HTTP image fetch for {filename} from {url}")
+             return None
+        except aiohttp.ClientConnectorError as e:
+             logger.error(f"Connection error during HTTP image fetch for {filename}: {e}")
+             return None
+        except Exception as e:
+             logger.error(f"Exception during HTTP image fetch for {filename}: {e}", exc_info=True)
+             return None
 
 
 class CloudGenerator(BaseGenerator):
@@ -652,7 +849,7 @@ class CloudGenerator(BaseGenerator):
             output_path (Path): Path to save the generated image
             
         Returns:
-            str or None: Path to the generated image or None on failure
+            bool: True if image generation succeeded, False otherwise
         """
         provider = style_params.get("cloud_api_provider", self.default_provider).lower()
         logger.info(f"Generating image using cloud provider: {provider}")
@@ -668,7 +865,8 @@ class CloudGenerator(BaseGenerator):
 
         if not decrypted_key:
             logger.error(f"API key for cloud provider '{provider}' not found or couldn't be decrypted.")
-            return self._create_placeholder_image(output_path)
+            self._create_placeholder_image(output_path)
+            return False # Cloud generation failed
 
         # Register API with manager (it might already be registered from startup)
         provider_conf = self.api_provider_config.get(provider, {})
@@ -692,21 +890,24 @@ class CloudGenerator(BaseGenerator):
             # Add elif for other providers (DALL-E 3, Stability, etc.)
             else:
                 logger.error(f"Unsupported cloud API provider specified: {provider}")
-                return self._create_placeholder_image(output_path)
+                self._create_placeholder_image(output_path)
+                return False # Cloud generation failed
             
             if image_data and isinstance(image_data, bytes):
             # Save the image
             with open(output_path, "wb") as f:
                 f.write(image_data)
                 logger.info(f"Cloud generated image saved to: {output_path}")
-                return str(output_path)
+                return True # Cloud generation success
             else:
                  logger.error(f"Cloud generation with {provider} failed or returned invalid data.")
-                 return self._create_placeholder_image(output_path)
+                 self._create_placeholder_image(output_path)
+                 return False # Cloud generation failed
             
         except Exception as e:
             logger.error(f"Error generating image with cloud API '{provider}': {e}", exc_info=True)
-            return self._create_placeholder_image(output_path)
+            self._create_placeholder_image(output_path)
+            return False # Cloud generation failed
     
     async def _generate_with_openai(self, reference_image_path, prompt, style_params):
         """
