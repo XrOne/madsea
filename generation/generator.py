@@ -417,19 +417,19 @@ class LocalGenerator(BaseGenerator):
         if not template_path.is_file():
             logger.warning(f"Workflow template {template_path} not found. Attempting to create default.")
             try:
-            return self._create_default_workflow()
+                return self._create_default_workflow()
             except Exception as e_create:
-                 logger.error(f"Failed to create default workflow: {e_create}")
-                 return None
+                logger.error(f"Failed to create default workflow: {e_create}")
+                return None
         
         try:
-        with open(template_path, 'r') as f:
-            workflow = json.load(f)
-            logger.debug(f"Successfully loaded workflow template: {template_name}")
-        return workflow
+            with open(template_path, 'r') as f:
+                workflow = json.load(f)
+                logger.debug(f"Successfully loaded workflow template: {template_name}")
+            return workflow
         except json.JSONDecodeError as e_json:
-             logger.error(f"Error decoding JSON from workflow file {template_path}: {e_json}")
-             return None
+            logger.error(f"Error decoding JSON from workflow file {template_path}: {e_json}")
+            return None
         except Exception as e_load:
             logger.error(f"Error loading workflow file {template_path}: {e_load}")
             return None
