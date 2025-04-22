@@ -1,37 +1,9 @@
-# Core dependencies
-python-dotenv>=1.0.0
-numpy==1.26.3
-Pillow==10.2.0
-tqdm>=4.66.0
-
-# PDF and image processing
-PyMuPDF==1.23.8
-pdfplumber==0.10.3
-pytesseract==0.3.10
-opencv-python==4.9.0.80
-
-# AI and ML
-torch>=2.0.0
-torchvision>=0.15.0
-diffusers>=0.21.0
-transformers>=4.30.0
-# Verify accelerator usage - seems unused, remove for Windows compatibility
-accelerator>=0.21.0
-safetensors>=0.3.1
-
-# Video processing
-ffmpeg-python>=0.2.0
-
-# Web UI
-flask>=2.3.0
-flask-cors>=4.0.0
-werkzeug>=2.3.0
-
-# Optional: for cloud API integration
-requests>=2.31.0
-openai>=1.0.0
-
-# Development tools
-pytest>=7.4.0
-black>=23.7.0
-isort>=5.12.0
+Flask
+pdfplumber
+werkzeug
+PyYAML
+python-dotenv
+requests
+pytesseract
+Pillow
+opencv-python

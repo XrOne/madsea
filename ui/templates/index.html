@@ -338,7 +338,7 @@
                         const response = await fetch(`/status/${taskId}`);
                         if (!response.ok) {
                             console.error(`Error fetching status ${taskId}: ${response.status}`);
-                            showStatusMessage(`Erreur ${response.status} lors de la récupération du statut.`);
+                            updateStatusMessage(`Erreur ${response.status} lors de la récupération du statut.`);
                             if (statusInterval) clearInterval(statusInterval); // Stop polling on fetch error
                             currentTaskLabel.textContent = 'Error';
                             return;
@@ -372,7 +372,7 @@
                                 clearInterval(statusInterval);
                                 statusInterval = null;
                             }
-                            showStatusMessage(`Génération terminée (Statut: ${data.status})`);
+                            updateStatusMessage(`Génération terminée (Statut: ${data.status})`);
                             updateProgressBar(data.progress || data.total || 0, data.total || 1); // Ensure bar is full/correct
                             currentTaskLabel.textContent = `Task: ${taskId.substring(0, 8)}... (Finished)`;
                             if (isFailed) {
@@ -382,7 +382,7 @@
 
                     } catch (error) {
                         console.error("Error in performCheck:", error);
-                        showStatusMessage("Erreur lors de la vérification du statut.");
+                        updateStatusMessage("Erreur lors de la vérification du statut.");
                         if (statusInterval) clearInterval(statusInterval); // Stop polling on JS error
                         currentTaskLabel.textContent = 'Error';
                     }

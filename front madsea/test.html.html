@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StoryFlow AI - Transform Storyboards into Animated Sequences</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: #f8fafc;
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .sidebar {
+            transition: all 0.3s ease;
+        }
+        
+        .scene-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .scene-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.35s;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e0;
+            border-radius: 10px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #a0aec0;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex">
+    <!-- Sidebar -->
+    <div class="sidebar w-64 bg-white shadow-lg flex flex-col">
+        <div class="p-4 border-b border-gray-200">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center text-white">
+                    <i class="fas fa-film text-xl"></i>
+                </div>
+                <h1 class="text-xl font-semibold text-gray-800">StoryFlow AI</h1>
+            </div>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+            <nav class="p-4">
+                <div class="space-y-1">
+                    <a href="#" class="flex items-center space-x-3 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-medium">
+                        <i class="fas fa-home text-indigo-600"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">
+                        <i class="fas fa-project-diagram"></i>
+                        <span>Projects</span>
+                    </a>
+                    <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">
+                        <i class="fas fa-palette"></i>
+                        <span>Styles Library</span>
+                    </a>
+                    <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </a>
+                    <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium">
+                        <i class="fas fa-graduation-cap"></i>
+                        <span>Tutorials</span>
+                    </a>
+                </div>
+                
+                <div class="mt-8">
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 mb-2">Recent Projects</h3>
+                    <div class="space-y-1">
+                        <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                            <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                            <span class="truncate">Sci-Fi Short Film</span>
+                        </a>
+                        <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                            <div class="w-2 h-2 rounded-full bg-yellow-500"></div>
+                            <span class="truncate">Fantasy Adventure</span>
+                        </a>
+                        <a href="#" class="flex items-center space-x-3 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                            <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+                            <span class="truncate">Documentary</span>
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </div>
+        
+        <div class="p-4 border-t border-gray-200">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">
+                    <i class="fas fa-user text-gray-600"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-medium text-gray-800">John Director</p>
+                    <p class="text-xs text-gray-500">Pro Plan</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- Top Navigation -->
+        <header class="bg-white shadow-sm">
+            <div class="px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button class="text-gray-500 focus:outline-none lg:hidden">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h2 class="text-xl font-semibold text-gray-800">Current Project: Sci-Fi Short Film</h2>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <div class="relative">
+                        <button class="text-gray-500 focus:outline-none">
+                            <i class="fas fa-bell"></i>
+                        </button>
+                        <span class="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500"></span>
+                    </div>
+                    <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                        <i class="fas fa-play mr-2"></i> Generate Video
+                    </button>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-200">
+                <div class="px-6">
+                    <nav class="flex space-x-8">
+                        <a href="#" class="border-indigo-500 text-indigo-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Storyboard</a>
+                        <a href="#" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Generated Scenes</a>
+                        <a href="#" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Animation</a>
+                        <a href="#" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Export</a>
+                        <a href="#" class="border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Settings</a>
+                    </nav>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
+            <div class="max-w-7xl mx-auto">
+                <!-- Project Overview -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-lg font-medium text-gray-900">Project Progress</h3>
+                            <span class="text-sm text-indigo-600 font-medium">65%</span>
+                        </div>
+                        <div class="mt-4">
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="bg-indigo-600 h-2.5 rounded-full" style="width: 65%"></div>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid grid-cols-3 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-500">Scenes</p>
+                                <p class="text-lg font-semibold">12/18</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Generated</p>
+                                <p class="text-lg font-semibold">8</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">Animated</p>
+                                <p class="text-lg font-semibold">4</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-lg font-medium text-gray-900">Current Style</h3>
+                        <div class="mt-4 flex items-center space-x-4">
+                            <div class="w-16 h-16 rounded-lg overflow-hidden">
+                                <img src="https://images.unsplash.com/photo-1518709268805-453e5230c1b0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=200&q=80" class="w-full h-full object-cover">
+                            </div>
+                            <div>
+                                <h4 class="font-medium">Cinematic Silhouette</h4>
+                                <p class="text-sm text-gray-500">Déclic Style</p>
+                                <button class="mt-1 text-xs text-indigo-600 hover:text-indigo-800">Change Style</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <h3 class="text-lg font-medium text-gray-900">Generation Settings</h3>
+                        <div class="mt-4 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-600">AI Engine</span>
+                                <span class="text-sm font-medium">Stable Diffusion XL</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-600">Processing Mode</span>
+                                <span class="text-sm font-medium">Local (GPU)</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-gray-600">ControlNet</span>
+                                <span class="text-sm font-medium">Scribble</span>
+                            </div>
+                            <button class="mt-2 w-full text-xs text-indigo-600 hover:text-indigo-800 text-left">Advanced Settings</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Action Bar -->
+                <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+                    <div class="flex flex-wrap items-center justify-between gap-4">
+                        <div class="flex items-center space-x-3">
+                            <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
+                                <i class="fas fa-plus mr-2"></i> Add Scene
+                            </button>
+                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center">
+                                <i class="fas fa-upload mr-2"></i> Import PDF
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center space-x-3">
+                            <div class="relative">
+                                <input type="text" placeholder="Search scenes..." class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                            </div>
+                            <button class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+                                <i class="fas fa-filter"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Scenes Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <!-- Scene Card - Example 1 -->
+                    <div class="scene-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md">
+                        <div class="relative aspect-video bg-gray-100">
+                            <img src="https://images.unsplash.com/photo-1534447677768-be436bb09401?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover">
+                            <div class="absolute top-2 left-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded">Scene 1</div>
+                            <div class="absolute bottom-2 right-2 bg-white text-indigo-600 text-xs px-2 py-1 rounded-full shadow">
+                                <i class="fas fa-check"></i>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <h3 class="font-medium text-gray-900">Opening Shot - Spaceship</h3>
+                            <p class="text-sm text-gray-500 mt-1">Ext. Space - Wide shot of spaceship approaching planet</p>
+                            <div class="mt-3 flex items-center justify-between">
+                                <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">Generated</span>
+                                <div class="flex space-x-2">
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Scene Card - Example 2 -->
+                    <div class="scene-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md">
+                        <div class="relative aspect-video bg-gray-100">
+                            <img src="https://images.unsplash.com/photo-1457364887196-7023db5ddbed?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover">
+                            <div class="absolute top-2 left-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded">Scene 2</div>
+                            <div class="absolute bottom-2 right-2 bg-white text-indigo-600 text-xs px-2 py-1 rounded-full shadow">
+                                <i class="fas fa-check"></i>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <h3 class="font-medium text-gray-900">Cockpit Interior</h3>
+                            <p class="text-sm text-gray-500 mt-1">Int. Spaceship - Close-up on pilot's face as alarm sounds</p>
+                            <div class="mt-3 flex items-center justify-between">
+                                <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">Generated</span>
+                                <div class="flex space-x-2">
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Scene Card - Example 3 -->
+                    <div class="scene-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md">
+                        <div class="relative aspect-video bg-gray-100">
+                            <img src="https://images.unsplash.com/photo-1454789548928-9a5b1a0e8d1f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80" class="w-full h-full object-cover">
+                            <div class="absolute top-2 left-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded">Scene 3</div>
+                            <div class="absolute bottom-2 right-2 bg-white text-yellow-500 text-xs px-2 py-1 rounded-full shadow">
+                                <i class="fas fa-spinner animate-spin"></i>
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <h3 class="font-medium text-gray-900">Alien Planet Surface</h3>
+                            <p class="text-sm text-gray-500 mt-1">Ext. Planet - Medium shot of crew stepping onto surface</p>
+                            <div class="mt-3 flex items-center justify-between">
+                                <span class="text-xs px-2 py-1 bg-yellow-100 text-yellow-600 rounded">Generating...</span>
+                                <div class="flex space-x-2">
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-play"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Scene Card - Example 4 (Storyboard only) -->
+                    <div class="scene-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md">
+                        <div class="relative aspect-video bg-gray-100 flex items-center justify-center">
+                            <div class="text-center p-4">
+                                <i class="fas fa-image text-4xl text-gray-300 mb-2"></i>
+                                <p class="text-sm text-gray-500">Storyboard only</p>
+                            </div>
+                            <div class="absolute top-2 left-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded">Scene 4</div>
+                        </div>
+                        <div class="p-4">
+                            <h3 class="font-medium text-gray-900">First Contact</h3>
+                            <p class="text-sm text-gray-500 mt-1">Ext. Ruins - Alien creature emerges from shadows</p>
+                            <div class="mt-3 flex items-center justify-between">
+                                <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">Not Generated</span>
+                                <div class="flex space-x-2">
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-magic"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="text-gray-400 hover:text-indigo-600">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Add New Scene Card -->
+                    <div class="scene-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md border-2 border-dashed border-gray-300 hover:border-indigo-300 flex items-center justify-center">
+                        <button class="text-center p-6 w-full">
+                            <div class="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+                                <i class="fas fa-plus text-xl"></i>
+                            </div>
+                            <h3 class="font-medium text-gray-900">Add New Scene</h3>
+                            <p class="text-sm text-gray-500 mt-1">Upload image or start from scratch</p>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Generation Panel (Example) -->
+                <div class="mt-8 bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                        <h3 class="text-lg font-medium text-gray-900">Scene Generation Progress</h3>
+                        <button class="text-gray-400 hover:text-gray-500">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="p-6">
+                        <div class="flex items-center space-x-4 mb-6">
+                            <div class="relative">
+                                <svg class="w-16 h-16" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="16" fill="none" stroke="#e5e7eb" stroke-width="2"></circle>
+                                    <circle cx="18" cy="18" r="16" fill="none" stroke="#4f46e5" stroke-width="2" stroke-dasharray="80 100" stroke-linecap="round"></circle>
+                                </svg>
+                                <span class="absolute inset-0 flex items-center justify-center text-sm font-medium">80%</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium">Generating Scene 3: Alien Planet Surface</h4>
+                                <p class="text-sm text-gray-500 mt-1">Applying cinematic silhouette style...</p>
+                                <div class="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                                    <div class="bg-indigo-600 h-1.5 rounded-full" style="width: 80%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="border rounded-lg p-3">
+                                <p class="text-xs text-gray-500">Original</p>
+                                <div class="aspect-video bg-gray-100 mt-1 flex items-center justify-center">
+                                    <i class="fas fa-image text-gray-300"></i>
+                                </div>
+                            </div>
+                            <div class="border rounded-lg p-3">
+                                <p class="text-xs text-gray-500">Current Output</p>
+                                <div class="aspect-video bg-gray-100 mt-1 flex items-center justify-center">
+                                    <i class="fas fa-image text-gray-300"></i>
+                                </div>
+                            </div>
+                            <div class="border rounded-lg p-3">
+                                <p class="text-xs text-gray-500">Style Reference</p>
+                                <div class="aspect-video bg-gray-100 mt-1 flex items-center justify-center">
+                                    <i class="fas fa-image text-gray-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6 flex justify-end space-x-3">
+                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                Cancel
+                            </button>
+                            <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                                <i class="fas fa-bolt mr-2"></i> Enhance
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Scripts -->
+    <script>
+        // Toggle sidebar on mobile
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebarToggle = document.querySelector('.lg\\:hidden');
+            const sidebar = document.querySelector('.sidebar');
+            
+            if (sidebarToggle && sidebar) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.toggle('hidden');
+                    sidebar.classList.toggle('absolute');
+                    sidebar.classList.toggle('z-50');
+                });
+            }
+            
+            // Simulate progress for demo purposes
+            const progressCircles = document.querySelectorAll('.progress-ring__circle');
+            progressCircles.forEach(circle => {
+                const radius = circle.r.baseVal.value;
+                const circumference = radius * 2 * Math.PI;
+                circle.style.strokeDasharray = `${circumference} ${circumference}`;
+                circle.style.strokeDashoffset = circumference;
+                
+                const setProgress = (percent) => {
+                    const offset = circumference - percent / 100 * circumference;
+                    circle.style.strokeDashoffset = offset;
+                };
+                
+                // Random progress for demo
+                setProgress(Math.floor(Math.random() * 100));
+            });
+        });
+    </script>
+</body>
+<!--
+    Ajout de la section style/paramétrage avancé dans la sidebar et le panneau principal.
+    Les IDs des éléments sont uniques pour chaque zone (sidebar et main) pour éviter les conflits.
+    Les valeurs sélectionnées pourront être synchronisées via JS si besoin (future évolution MCP).
+    Tous les ajouts sont commentés pour faciliter la maintenance.
+-->
+</html>
