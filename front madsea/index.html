@@ -181,8 +181,10 @@
         <!-- Main Content Area -->
         <main class="flex-1 overflow-y-auto p-6 bg-gray-50">
             <div class="max-w-7xl mx-auto">
+                <!-- Conteneur pour la gestion des projets -->
+                <div id="projects-container"></div>
                 <!-- Project Overview -->
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div id="scenes-grid" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <div class="bg-white rounded-xl shadow-sm p-6">
                         <div class="flex items-center justify-between">
                             <h3 class="text-lg font-medium text-gray-900">Project Progress</h3>
@@ -250,9 +252,9 @@
                             <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center">
                                 <i class="fas fa-plus mr-2"></i> Add Scene
                             </button>
-                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center">
-                                <i class="fas fa-upload mr-2"></i> Import PDF
-                            </button>
+                            <button id="import-pdf-btn" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center" disabled>
+    <i class="fas fa-upload mr-2"></i> Import PDF
+</button>
                         </div>
                         
                         <div class="flex items-center space-x-3">
@@ -454,19 +456,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </main>
-    </div>
-    
-    <!-- Scripts -->
-    <script>
-        // Toggle sidebar on mobile
-        document.addEventListener('DOMContentLoaded', function() {
-            const sidebarToggle = document.querySelector('.lg\\:hidden');
-            const sidebar = document.querySelector('.sidebar');
-            
-            if (sidebarToggle && sidebar) {
-                sidebarToggle.addEventListener('click', function() {
                     sidebar.classList.toggle('hidden');
                     sidebar.classList.toggle('absolute');
                     sidebar.classList.toggle('z-50');
@@ -490,6 +479,123 @@
                 setProgress(Math.floor(Math.random() * 100));
             });
         });
+    </script>
+    <!-- JS pour la gestion des projets -->
+    <script src="003-prototype-ui-projects.js"></script>
+    <script>renderProjectsUI();</script>
+    <!-- JS Upload PDF + extraction images (robuste, loggué, workflow séquencé) -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Sélection projet (écouteur sur création/sélection projet) ---
+        let projectSelected = false;
+        function checkProjectSelection() {
+            // Ici, on vérifie si un projet est sélectionné (ex: dans localStorage ou via UI)
+            // Pour la maquette, on active le bouton dès qu'il y a au moins un projet
+            try {
+                const data = JSON.parse(localStorage.getItem('madsea_projects') || '{"projects":[]}');
+                if(data.projects && data.projects.length > 0) {
+                    projectSelected = true;
+                } else {
+                    projectSelected = false;
+                }
+            } catch(e) { projectSelected = false; }
+            document.getElementById('import-pdf-btn').disabled = !projectSelected;
+            console.log('[Front] Project selection status:', projectSelected);
+        }
+        checkProjectSelection();
+        window.addEventListener('storage', checkProjectSelection);
+        // --- PDF Upload Handler ---
+        const importPdfBtn = document.getElementById('import-pdf-btn');
+        if(importPdfBtn) {
+            let fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.pdf';
+            fileInput.style.display = 'none';
+            document.body.appendChild(fileInput);
+            importPdfBtn.addEventListener('click', function() {
+                if(!projectSelected) {
+                    alert('Merci de créer/sélectionner un projet avant d\'uploader un PDF.');
+                    return;
+                }
+                fileInput.click();
+            });
+            fileInput.addEventListener('change', async function(e) {
+                if(!fileInput.files.length) return;
+                let formData = new FormData();
+                formData.append('storyboard_file', fileInput.files[0]);
+                importPdfBtn.disabled = true;
+                importPdfBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Importing...';
+                console.log('[Front] Uploading PDF...');
+                try {
+                    let resp = await fetch('http://localhost:5000/api/upload_storyboard', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    let data = await resp.json();
+                    console.log('[Front] Backend response:', data);
+                    if(data.images && Array.isArray(data.images)) {
+                        // Afficher dynamiquement les images extraites dans la grille des scènes
+                        const grid = document.getElementById('scenes-grid');
+                        if(grid) {
+                            grid.innerHTML = '';
+                            data.images.forEach((imgUrl, idx) => {
+    // Correction : préfixer les URLs /uploads/ par le backend
+    let fullUrl = imgUrl.startsWith('/uploads/') ? `http://localhost:5000${imgUrl}` : imgUrl;
+    let card = document.createElement('div');
+    card.className = 'scene-card bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md';
+    card.innerHTML = `
+        <div class="relative aspect-video bg-gray-100">
+            <img src="${fullUrl}" class="w-full h-full object-cover" onerror="this.style.opacity=0.3;showToast('Image introuvable : ${imgUrl}','error',4000);">
+            <div class="absolute top-2 left-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded">Scene ${idx+1}</div>
+        </div>
+        <div class="p-4">
+            <h3 class="font-medium text-gray-900">Storyboard Scene ${idx+1}</h3>
+            <p class="text-sm text-gray-500 mt-1">Image extraite du PDF</p>
+            <div class="mt-3 flex items-center justify-between">
+                <span class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">Extracted</span>
+            </div>
+        </div>
+    `;
+    grid.appendChild(card);
+});
+                        }
+                        console.log('[Front] Images extraites et affichées:', data.images);
+                    } else {
+                        alert('Aucune image extraite.');
+                        console.error('[Front] Aucune image extraite.');
+                    }
+                } catch(err) {
+                    alert('Erreur lors de l\'upload: ' + err);
+                    console.error('[Front] Erreur lors de l\'upload:', err);
+                } finally {
+                    importPdfBtn.disabled = false;
+                    importPdfBtn.innerHTML = '<i class="fas fa-upload mr-2"></i> Import PDF';
+                    fileInput.value = '';
+                }
+            });
+        }
+        // Rafraîchir l’état du bouton après création projet
+        window.renderProjectsUI = (function(old) {
+            return function() {
+                if(old) old();
+                checkProjectSelection();
+            }
+        })(window.renderProjectsUI);
+    });
+    </script>
+    <!-- Toast notifications -->
+    <div id="toast-container" style="position:fixed;top:32px;right:32px;z-index:9999;display:flex;flex-direction:column;gap:12px;"></div>
+    <script>
+    function showToast(message, type = 'info', duration = 3500) {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast-msg toast-${type}`;
+        toast.style = `min-width:220px;max-width:340px;padding:14px 22px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.12);background:${type==='error'?'#fee2e2':type==='success'?'#dcfce7':'#f1f5f9'};color:${type==='error'?'#b91c1c':type==='success'?'#166534':'#334155'};font-weight:500;font-size:1rem;opacity:0;transition:opacity .3s;`;
+        toast.innerText = message;
+        container.appendChild(toast);
+        setTimeout(()=>{toast.style.opacity=1;},10);
+        setTimeout(()=>{toast.style.opacity=0;setTimeout(()=>container.removeChild(toast),300);},duration);
+    }
     </script>
 </body>
 <!--

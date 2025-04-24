@@ -22,6 +22,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def extract_images_from_pdf(pdf_path, output_folder):
+    print(f'[Backend] Extraction images du PDF: {pdf_path} vers {output_folder}')
     doc = fitz.open(pdf_path)
     image_paths = []
     for page_index in range(len(doc)):
@@ -34,6 +35,7 @@ def extract_images_from_pdf(pdf_path, output_folder):
             img_path = os.path.join(output_folder, img_filename)
             with open(img_path, "wb") as img_file:
                 img_file.write(image_bytes)
+            print(f'[Backend] Image extraite: {img_path}')
             image_paths.append(img_path)
     return image_paths
 
@@ -72,7 +74,9 @@ def upload_storyboard():
         # Extraction
         image_paths = []
         if ext == "pdf":
+            print(f'[Backend] Extraction du fichier {file_path} (type: {ext})')
             image_paths = extract_images_from_pdf(file_path, images_folder)
+            print(f'[Backend] {len(image_paths)} images extraites: {image_paths}')
         elif ext == "zip":
             image_paths = extract_images_from_zip(file_path, images_folder)
         else:
@@ -83,7 +87,7 @@ def upload_storyboard():
             f"/uploads/{session_id}/images/{os.path.basename(p)}"
             for p in image_paths
         ]
-
+        print(f'[Backend] URLs images générées: {image_urls}')
         return jsonify({
             'message': f"{len(image_urls)} images extraites.",
             'images': image_urls,

@@ -1,35 +1,11 @@
-# Modèles d'IA
-models/
-*.safetensors
-*.ckpt
-*.bin
-*.pt
-*.pth
-*.onnx
-
-# Dossiers de modèles spécifiques
-ComfyUI/models/
-ComfyUI/models/checkpoints/
-ComfyUI/models/controlnet/
-ComfyUI/models/vae/
-ComfyUI/models/loras/
-ComfyUI/models/upscale_models/
-
-# Fichiers temporaires et logs
-temp/
-logs/
-*.log
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-cache/
-
-# Environnement virtuel
-venv/
-env/
-.env
-
-# Fichiers système
-.DS_Store
-Thumbs.db 
+# Ignore uploaded images and extracted storyboard assets
+/uploads/
+uploads/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.pdf
+*.zip
+!uploads/.gitkeep
