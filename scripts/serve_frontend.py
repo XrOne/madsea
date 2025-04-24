@@ -8,7 +8,7 @@ import os
 
 # Chemin du dossier front (à adapter si besoin)
 FRONT_DIR = os.path.join(os.path.dirname(__file__), '../front madsea')
-PORT = 8080
+PORT = 8888
 
 os.chdir(FRONT_DIR)
 print(f"[Madsea] Serveur HTTP lancé sur {PORT} dans le dossier : {os.path.abspath(FRONT_DIR)}")
