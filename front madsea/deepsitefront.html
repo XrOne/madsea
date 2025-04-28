@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Madsea - Storyboard to Visual Sequences</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9fafb;
+        }
+        .scene-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .dropzone-active {
+            border-color: #3B82F6;
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+        .toast {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .timeline-item:hover .timeline-preview {
+            display: block;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .slide-up {
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .location-highlight {
+            background-color: #FFFBEB;
+            border-left: 4px solid #F59E0B;
+        }
+        .dialogue-box {
+            font-weight: bold;
+            background-color: #EFF6FF;
+            border-left: 4px solid #3B82F6;
+        }
+        .indication-box {
+            background-color: #ECFDF5;
+            border-left: 4px solid #10B981;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useContext, createContext } = React;
+
+        // Context for global state
+        const AppContext = createContext();
+
+        // Mock data for development
+        const mockProjects = [
+            {
+                id: "proj_123",
+                name: "Film Noir",
+                type: "unitaire",
+                duration: "90min",
+                nomenclature: "Titre_v0001.jpg",
+                episodes: [
+                    {
+                        id: "ep_123",
+                        number: "1",
+                        name: "Séquence d'ouverture",
+                        scenes: []
+                    }
+                ],
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                isArchived: false
+            },
+            {
+                id: "proj_456",
+                name: "Série Sci-Fi",
+                type: "serie",
+                season: "1",
+                episode: "01",
+                nomenclature: "E101_SQ0001-0001_AI-Concept_v0001.jpg",
+                episodes: [
+                    {
+                        id: "ep_456",
+                        number: "101",
+                        name: "Premier Contact",
+                        scenes: []
+                    },
+                    {
+                        id: "ep_789",
+                        number: "102",
+                        name: "La Base Secrète",
+                        scenes: []
+                    }
+                ],
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                isArchived: false
+            }
+        ];
+
+        const mockTrash = [
+            {
+                id: "proj_789",
+                name: "Ancien Projet",
+                type: "unitaire",
+                duration: "120min",
+                nomenclature: "Old_v0001.jpg",
+                episodes: [],
+                createdAt: new Date(Date.now() - 86400000),
+                updatedAt: new Date(Date.now() - 86400000),
+                isArchived: true
+            }
+        ];
+
+        const planTypes = ["PL", "PR", "GP", "TGP", "PA", "PE", "PC", "PD"];
+        const stylePresets = [
+            { id: 1, name: "Ombres chinoises", description: "Silhouettes noires sur fond coloré", icon: "🖤" },
+            { id: 2, name: "Laboratoire", description: "Style scientifique, dessin technique", icon: "🔬" },
+            { id: 3, name: "Expressionniste", description: "Émotionnel, coups de pinceau visibles", icon: "🎨" },
+            { id: 4, name: "Custom", description: "Personnalisé via paramètres avancés", icon: "⚙️" }
+        ];
+
+        // Main App Component
+        function App() {
+            const [projects, setProjects] = useState(mockProjects);
+            const [trash, setTrash] = useState(mockTrash);
+            const [activeProject, setActiveProject] = useState(null);
+            const [activeEpisode, setActiveEpisode] = useState(null);
+            const [scenes, setScenes] = useState([]);
+            const [selectedScenes, setSelectedScenes] = useState([]);
+            const [notifications, setNotifications] = useState([]);
+            const [viewMode, setViewMode] = useState('grid');
+            const [isUploading, setIsUploading] = useState(false);
+            const [uploadProgress, setUploadProgress] = useState(0);
+            const [extractionProgress, setExtractionProgress] = useState(0);
+            const [isGenerating, setIsGenerating] = useState(false);
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+            const [showTrash, setShowTrash] = useState(false);
+            const [newProjectData, setNewProjectData] = useState({
+                name: '',
+                type: 'unitaire',
+                duration: '',
+                season: '',
+                episode: '',
+                title: ''
+            });
+
+            // Add a notification
+            const addNotification = (message, type = 'info') => {
+                const id = Date.now();
+                setNotifications(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== id));
+                }, 5000);
+            };
+
+            // Handle project selection
+            const selectProject = (projectId) => {
+                const project = [...projects, ...trash].find(p => p.id === projectId);
+                setActiveProject(project);
+                setActiveEpisode(project?.episodes?.[0] || null);
+                setScenes(project?.episodes?.[0]?.scenes || []);
+                setSelectedScenes([]);
+                addNotification(`Projet "${project?.name}" sélectionné`, 'success');
+            };
+
+            // Handle episode selection
+            const selectEpisode = (episodeId) => {
+                const episode = activeProject?.episodes?.find(e => e.id === episodeId);
+                setActiveEpisode(episode);
+                setScenes(episode?.scenes || []);
+                setSelectedScenes([]);
+                addNotification(`Épisode "${episode?.name}" sélectionné`, 'info');
+            };
+
+            // Handle scene selection
+            const toggleSceneSelection = (sceneId) => {
+                setSelectedScenes(prev => 
+                    prev.includes(sceneId) 
+                        ? prev.filter(id => id !== sceneId) 
+                        : [...prev, sceneId]
+                );
+            };
+
+            // Select all scenes
+            const selectAllScenes = () => {
+                if (selectedScenes.length === scenes.length) {
+                    setSelectedScenes([]);
+                } else {
+                    setSelectedScenes(scenes.map(s => s.id));
+                }
+            };
+
+            // Create new project
+            const createProject = () => {
+                if (!newProjectData.name) {
+                    addNotification('Veuillez donner un nom au projet', 'warning');
+                    return;
+                }
+
+                const id = `proj_${Date.now()}`;
+                let nomenclature = '';
+                
+                if (newProjectData.type === 'unitaire') {
+                    if (!newProjectData.title || !newProjectData.duration) {
+                        addNotification('Veuillez remplir tous les champs pour un projet unitaire', 'warning');
+                        return;
+                    }
+                    nomenclature = `${newProjectData.title.replace(/\s+/g, '_')}_v0001.jpg`;
+                } else {
+                    if (!newProjectData.season || !newProjectData.episode || !newProjectData.title) {
+                        addNotification('Veuillez remplir tous les champs pour une série', 'warning');
+                        return;
+                    }
+                    nomenclature = `E${newProjectData.season}${newProjectData.episode}_SQ0001-0001_AI-Concept_v0001.jpg`;
+                }
+
+                const project = {
+                    id,
+                    name: newProjectData.name,
+                    type: newProjectData.type,
+                    duration: newProjectData.duration,
+                    season: newProjectData.season,
+                    episode: newProjectData.episode,
+                    title: newProjectData.title,
+                    nomenclature,
+                    episodes: [{
+                        id: `ep_${Date.now()}`,
+                        number: newProjectData.type === 'unitaire' 
+                            ? `${newProjectData.episode}` 
+                            : `${newProjectData.season}${newProjectData.episode.toString().padStart(2, '0')}`,
+                        name: newProjectData.type === 'unitaire' ? newProjectData.title : `Épisode ${newProjectData.episode}`,
+                        scenes: []
+                    }],
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    isArchived: false
+                };
+
+                setProjects(prev => [...prev, project]);
+                setNewProjectData({
+                    name: '',
+                    type: 'unitaire',
+                    duration: '',
+                    season: '',
+                    episode: '',
+                    title: ''
+                });
+                setShowNewProjectModal(false);
+                selectProject(id);
+                addNotification('Nouveau projet créé avec succès', 'success');
+            };
+
+            // Move project to trash
+            const moveToTrash = (projectId) => {
+                if (window.confirm('Êtes-vous sûr de vouloir archiver ce projet ?')) {
+                    const projectToMove = projects.find(p => p.id === projectId);
+                    
+                    if (projectToMove) {
+                        setProjects(prev => prev.filter(p => p.id !== projectId));
+                        setTrash(prev => [...prev, {...projectToMove, isArchived: true}]);
+                        
+                        if (activeProject?.id === projectId) {
+                            setActiveProject(null);
+                            setActiveEpisode(null);
+                            setScenes([]);
+                        }
+                        
+                        addNotification('Projet déplacé dans la corbeille', 'success');
+                    }
+                }
+            };
+
+            // Restore project from trash
+            const restoreFromTrash = (projectId) => {
+                const projectToRestore = trash.find(p => p.id === projectId);
+                
+                if (projectToRestore) {
+                    setTrash(prev => prev.filter(p => p.id !== projectId));
+                    setProjects(prev => [...prev, {...projectToRestore, isArchived: false}]);
+                    addNotification('Projet restauré depuis la corbeille', 'success');
+                }
+            };
+
+            // Permanently delete project
+            const permanentlyDelete = (projectId) => {
+                if (window.confirm('Êtes-vous sûr de vouloir supprimer définitivement ce projet ? Cette action est irréversible.')) {
+                    setTrash(prev => prev.filter(p => p.id !== projectId));
+                    addNotification('Projet supprimé définitivement', 'success');
+                }
+            };
+
+            // Empty trash
+            const emptyTrash = () => {
+                if (window.confirm('Êtes-vous sûr de vouloir vider la corbeille ? Tous les projets archivés seront définitivement supprimés.')) {
+                    setTrash([]);
+                    addNotification('Corbeille vidée', 'success');
+                }
+            };
+
+            // Add new episode
+            const addEpisode = () => {
+                if (!activeProject) return;
+                
+                const episodeNumber = activeProject.episodes.length + 1;
+                const episodeId = `ep_${Date.now()}`;
+                
+                const newEpisode = {
+                    id: episodeId,
+                    number: activeProject.type === 'unitaire' 
+                        ? `${episodeNumber}` 
+                        : `${activeProject.season}${episodeNumber.toString().padStart(2, '0')}`,
+                    name: `Nouvel épisode ${episodeNumber}`,
+                    scenes: []
+                };
+                
+                setProjects(prev => prev.map(p => 
+                    p.id === activeProject.id 
+                        ? { ...p, episodes: [...p.episodes, newEpisode], updatedAt: new Date() } 
+                        : p
+                ));
+                
+                if (activeProject.id === activeProject?.id) {
+                    setActiveProject(prev => ({
+                        ...prev,
+                        episodes: [...prev.episodes, newEpisode],
+                        updatedAt: new Date()
+                    }));
+                }
+                
+                addNotification('Nouvel épisode ajouté', 'info');
+            };
+
+            // Handle file upload
+            const handleFileUpload = async (files) => {
+                if (!files || files.length === 0) {
+                    addNotification('Aucun fichier sélectionné.', 'warning');
+                    return;
+                }
+                
+                if (!activeProject || !activeEpisode) {
+                    addNotification('Veuillez sélectionner un projet et un épisode actifs.', 'warning');
+                    return;
+                }
+
+                const file = files[0];
+                // Vérification basique du type (peut être améliorée)
+                if (!file.type.startsWith('application/pdf')) { // Simplifié pour PDF pour l'instant
+                     addNotification('Seuls les fichiers PDF sont supportés pour le moment.', 'warning');
+                     return;
+                }
+
+                setIsUploading(true);
+                setUploadProgress(0); // Peut être utilisé pour un indicateur visuel simple
+                setExtractionProgress(0);
+                addNotification('Téléchargement et extraction en cours...', 'info');
+
+                const formData = new FormData();
+                formData.append('storyboard_file', file);
+                formData.append('project_id', activeProject.id); 
+                formData.append('episode_id', activeEpisode.id);
+                // Ajouter les options (si nécessaire, pour l'instant valeurs par défaut)
+                const options = {
+                    detectPanels: true,
+                    extractText: true,
+                    enhanceQuality: true, // Assurez-vous que le backend gère cela
+                    extractCaptions: true
+                };
+                formData.append('options', JSON.stringify(options));
+
+                try {
+                    const response = await fetch('http://localhost:5000/api/upload_storyboard', { // URL ABSOLUE CORRIGÉE
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    setUploadProgress(100); // Indique la fin de l'upload
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue du serveur' }));
+                        throw new Error(errorData.error || `Erreur HTTP: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    setExtractionProgress(100); // Indique la fin de l'extraction (simplifié)
+                    addNotification(result.message || 'Extraction terminée avec succès!', 'success');
+
+                    // --- Traitement des données réelles --- 
+                    if (result.extracted_data && result.extracted_data.pages) {
+                        // Tenter de mapper les données extraites au format attendu par le frontend
+                        const newScenes = [];
+                        let sceneCounter = 1;
+                        result.extracted_data.pages.forEach((page, pageIndex) => {
+                            // Essayer de regrouper par panel/image si possible
+                            // Ceci est une simplification, une logique plus robuste serait nécessaire
+                            page.images.forEach((img, imgIndex) => {
+                                const sceneText = page.texts.find(txt => { 
+                                    // Logique simple pour associer texte et image (à améliorer)
+                                    // Ici, on suppose qu'un texte proche est associé
+                                    const imgBox = img.bbox;
+                                    const txtBox = txt.bbox;
+                                    const overlap = Math.max(0, Math.min(imgBox[2], txtBox[2]) - Math.max(imgBox[0], txtBox[0])) *
+                                                    Math.max(0, Math.min(imgBox[3], txtBox[3]) - Math.max(imgBox[1], txtBox[1]));
+                                    const isClose = Math.abs(imgBox[3] - txtBox[1]) < 50; // Si le texte est juste en dessous
+                                    return isClose; // Simplification extrême
+                                });
+                                
+                                newScenes.push({
+                                    id: `scene_${Date.now()}_${pageIndex}_${imgIndex}`,
+                                    image_url: img.path, // Utiliser le chemin retourné par l'API
+                                    title: `Scène ${sceneCounter++}`,
+                                    location: `Page ${pageIndex + 1}`, // Placeholder
+                                    dialogue: sceneText ? sceneText.content.substring(0, 50) + '...' : 'Texte non trouvé', // Placeholder
+                                    indication: '', // Placeholder
+                                    type_plan: '', // Placeholder
+                                    description: '', // Placeholder
+                                    notes: '', // Placeholder
+                                    storyboard_text: sceneText ? sceneText.content : '' // Texte brut OCR
+                                });
+                            });
+                        });
+                        
+                        if (newScenes.length > 0) {
+                           setScenes(newScenes);
+                           // Mettre à jour aussi l'état global des projets/épisodes si nécessaire
+                           updateGlobalScenes(newScenes);
+                        } else {
+                            addNotification('Aucune scène détectée dans le storyboard.', 'warning');
+                            setScenes([]); // Vider les scènes précédentes
+                        }
+                    } else {
+                        addNotification('Données extraites non trouvées ou invalides dans la réponse.', 'warning');
+                        setScenes([]); // Vider les scènes
+                    }
+
+                } catch (error) {
+                    console.error('Erreur lors de l\'upload/extraction:', error);
+                    addNotification(`Erreur: ${error.message}`, 'error');
+                    setScenes([]); // Vider en cas d'erreur
+                } finally {
+                    setIsUploading(false);
+                    setUploadProgress(0);
+                    setExtractionProgress(0);
+                }
+            };
+
+            // Fonction pour mettre à jour l'état global (à adapter selon votre structure)
+            const updateGlobalScenes = (newScenes) => {
+                if (activeProject && activeEpisode) {
+                     setProjects(prev => prev.map(p => 
+                         p.id === activeProject.id 
+                             ? { 
+                                 ...p, 
+                                 episodes: p.episodes.map(e => 
+                                     e.id === activeEpisode.id 
+                                         ? { ...e, scenes: newScenes } 
+                                         : e
+                                 )
+                             } 
+                             : p
+                     ));
+                     // Mettre à jour l'épisode actif directement si nécessaire
+                     setActiveEpisode(prev => ({ ...prev, scenes: newScenes }));
+                 }
+            };
+
+            // Handle style generation
+            const generateStyle = (styleId) => {
+                if (selectedScenes.length === 0) {
+                    addNotification('Veuillez sélectionner au moins une scène', 'warning');
+                    return;
+                }
+                
+                setIsGenerating(true);
+                addNotification(`Génération du style "${stylePresets.find(s => s.id === styleId)?.name}" en cours...`, 'info');
+                
+                // Simulate generation
+                setTimeout(() => {
+                    setIsGenerating(false);
+                    addNotification('Génération terminée avec succès', 'success');
+                }, 3000);
+            };
+
+            // Context value
+            const contextValue = {
+                projects,
+                trash,
+                activeProject,
+                activeEpisode,
+                scenes,
+                selectedScenes,
+                notifications,
+                viewMode,
+                isUploading,
+                uploadProgress,
+                extractionProgress,
+                isGenerating,
+                sidebarOpen,
+                showNewProjectModal,
+                showTrash,
+                newProjectData,
+                selectProject,
+                selectEpisode,
+                toggleSceneSelection,
+                selectAllScenes,
+                createProject,
+                moveToTrash,
+                restoreFromTrash,
+                permanentlyDelete,
+                emptyTrash,
+                addEpisode,
+                handleFileUpload,
+                generateStyle,
+                addNotification,
+                setViewMode,
+                setSidebarOpen,
+                setShowNewProjectModal,
+                setShowTrash,
+                setNewProjectData
+            };
+
+            return (
+                <AppContext.Provider value={contextValue}>
+                    <div className="flex h-screen overflow-hidden">
+                        {/* Sidebar */}
+                        <Sidebar />
+                        
+                        {/* Main content */}
+                        <div className="flex-1 flex flex-col overflow-hidden">
+                            <Header />
+                            
+                            <main className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                                {!activeProject ? (
+                                    <ProjectDashboard />
+                                ) : (
+                                    <>
+                                        <EpisodeSelector />
+                                        <SceneToolbar />
+                                        {scenes.length === 0 ? (
+                                            <UploadArea />
+                                        ) : viewMode === 'grid' ? (
+                                            <SceneGrid />
+                                        ) : (
+                                            <SceneList />
+                                        )}
+                                    </>
+                                )}
+                            </main>
+                        </div>
+                        
+                        {/* New Project Modal */}
+                        <NewProjectModal />
+                        
+                        {/* Trash Modal */}
+                        <TrashModal />
+                        
+                        {/* Notifications */}
+                        <NotificationCenter />
+                    </div>
+                </AppContext.Provider>
+            );
+        }
+
+        // Sidebar Component
+        function Sidebar() {
+            const { 
+                sidebarOpen, 
+                projects, 
+                trash,
+                activeProject, 
+                selectProject, 
+                setSidebarOpen,
+                moveToTrash,
+                setShowNewProjectModal,
+                setShowTrash
+            } = useContext(AppContext);
+            
+            return (
+                <div className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-gray-800 text-white transition-all duration-300 flex flex-col`}>
+                    <div className="p-4 flex items-center justify-between border-b border-gray-700">
+                        {sidebarOpen ? (
+                            <h1 className="text-xl font-bold">Madsea</h1>
+                        ) : (
+                            <h1 className="text-xl font-bold">M</h1>
+                        )}
+                        <button 
+                            onClick={() => setSidebarOpen(!sidebarOpen)}
+                            className="text-gray-400 hover:text-white"
+                        >
+                            {sidebarOpen ? '«' : '»'}
+                        </button>
+                    </div>
+                    
+                    <div className="p-4 flex-1 overflow-y-auto">
+                        {sidebarOpen ? (
+                            <>
+                                <div className="flex justify-between items-center mb-2">
+                                    <h2 className="text-sm uppercase font-semibold text-gray-400">Projets</h2>
+                                    <div className="flex space-x-1">
+                                        <button 
+                                            onClick={() => setShowNewProjectModal(true)}
+                                            className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded"
+                                            title="Nouveau projet"
+                                        >
+                                            +
+                                        </button>
+                                        <button 
+                                            onClick={() => setShowTrash(true)}
+                                            className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded"
+                                            title="Corbeille"
+                                        >
+                                            🗑
+                                        </button>
+                                    </div>
+                                </div>
+                                <ul className="space-y-1">
+                                    {projects.map(project => (
+                                        <li key={project.id} className="group relative">
+                                            <button
+                                                onClick={() => selectProject(project.id)}
+                                                className={`w-full text-left px-3 py-2 rounded-md flex items-center ${activeProject?.id === project.id ? 'bg-blue-600' : 'hover:bg-gray-700'}`}
+                                            >
+                                                <span className="truncate">{project.name}</span>
+                                                <span className="ml-auto text-xs bg-gray-600 px-2 py-1 rounded-full">
+                                                    {project.episodes.length}
+                                                </span>
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    moveToTrash(project.id);
+                                                }}
+                                                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-white"
+                                                title="Archiver le projet"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                                </svg>
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center space-y-4">
+                                {projects.map(project => (
+                                    <button
+                                        key={project.id}
+                                        onClick={() => selectProject(project.id)}
+                                        className={`w-12 h-12 rounded-full flex items-center justify-center ${activeProject?.id === project.id ? 'bg-blue-600' : 'bg-gray-700'}`}
+                                        title={project.name}
+                                    >
+                                        {project.name.charAt(0)}
+                                    </button>
+                                ))}
+                                <div className="flex space-x-2">
+                                    <button 
+                                        className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600"
+                                        title="Nouveau projet"
+                                        onClick={() => setShowNewProjectModal(true)}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                    </button>
+                                    <button 
+                                        className="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center hover:bg-gray-600"
+                                        title="Corbeille"
+                                        onClick={() => setShowTrash(true)}
+                                    >
+                                        🗑
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="p-4 border-t border-gray-700">
+                        {sidebarOpen ? (
+                            <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                                    U
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium">Utilisateur</p>
+                                    <p className="text-xs text-gray-400">Artiste</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex justify-center">
+                                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                                    U
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Header Component
+        function Header() {
+            const { activeProject, activeEpisode, viewMode, setViewMode, addNotification } = useContext(AppContext);
+            
+            return (
+                <header className="bg-white shadow-sm">
+                    <div className="px-6 py-4 flex items-center justify-between">
+                        <div>
+                            <h1 className="text-xl font-semibold text-gray-900">
+                                {activeProject ? activeProject.name : 'Tableau de bord'}
+                            </h1>
+                            {activeEpisode && (
+                                <p className="text-sm text-gray-500">
+                                    Épisode {activeEpisode.number}: {activeEpisode.name}
+                                </p>
+                            )}
+                        </div>
+                        
+                        <div className="flex items-center space-x-4">
+                            {activeProject && (
+                                <>
+                                    <button 
+                                        onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                                        className="p-2 rounded-md hover:bg-gray-100"
+                                        title={viewMode === 'grid' ? 'Vue liste' : 'Vue grille'}
+                                    >
+                                        {viewMode === 'grid' ? (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                            </svg>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                    
+                                    <button 
+                                        onClick={() => addNotification('Fonctionnalité à venir', 'info')}
+                                        className="p-2 rounded-md hover:bg-gray-100"
+                                        title="Paramètres"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543.94 3.31-.826 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        </svg>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </header>
+            );
+        }
+
+        // New Project Modal Component
+        function NewProjectModal() {
+            const { 
+                showNewProjectModal, 
+                setShowNewProjectModal, 
+                newProjectData, 
+                setNewProjectData,
+                createProject
+            } = useContext(AppContext);
+            
+            if (!showNewProjectModal) return null;
+            
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-md slide-up">
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-medium text-gray-900">Nouveau projet</h3>
+                                <button 
+                                    onClick={() => setShowNewProjectModal(false)}
+                                    className="text-gray-400 hover:text-gray-500"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
+                                        Nom du projet
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="project-name"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                        value={newProjectData.name}
+                                        onChange={(e) => setNewProjectData({...newProjectData, name: e.target.value})}
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Type de projet
+                                    </label>
+                                    <div className="flex space-x-4">
+                                        <label className="inline-flex items-center">
+                                            <input
+                                                type="radio"
+                                                className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                                checked={newProjectData.type === 'unitaire'}
+                                                onChange={() => setNewProjectData({...newProjectData, type: 'unitaire'})}
+                                            />
+                                            <span className="ml-2 text-sm text-gray-700">Unitaire</span>
+                                        </label>
+                                        <label className="inline-flex items-center">
+                                            <input
+                                                type="radio"
+                                                className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                                checked={newProjectData.type === 'serie'}
+                                                onChange={() => setNewProjectData({...newProjectData, type: 'serie'})}
+                                            />
+                                            <span className="ml-2 text-sm text-gray-700">Série</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                {newProjectData.type === 'unitaire' ? (
+                                    <>
+                                        <div>
+                                            <label htmlFor="project-title" className="block text-sm font-medium text-gray-700 mb-1">
+                                                Titre du film
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id="project-title"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                value={newProjectData.title}
+                                                onChange={(e) => setNewProjectData({...newProjectData, title: e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="project-duration" className="block text-sm font-medium text-gray-700 mb-1">
+                                                Durée (minutes)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                id="project-duration"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                value={newProjectData.duration}
+                                                onChange={(e) => setNewProjectData({...newProjectData, duration: e.target.value})}
+                                            />
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label htmlFor="project-season" className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Numéro de saison
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    id="project-season"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                    value={newProjectData.season}
+                                                    onChange={(e) => setNewProjectData({...newProjectData, season: e.target.value})}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label htmlFor="project-episode" className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Numéro d'épisode
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    id="project-episode"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                    value={newProjectData.episode}
+                                                    onChange={(e) => setNewProjectData({...newProjectData, episode: e.target.value})}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label htmlFor="project-title" className="block text-sm font-medium text-gray-700 mb-1">
+                                                Titre de l'épisode
+                                            </label>
+                                            <input
+                                                type="text"
+                                                id="project-title"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                                                value={newProjectData.title}
+                                                onChange={(e) => setNewProjectData({...newProjectData, title: e.target.value})}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="bg-gray-50 px-6 py-3 flex justify-end rounded-b-lg">
+                            <button
+                                type="button"
+                                className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                onClick={() => setShowNewProjectModal(false)}
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="button"
+                                className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                onClick={createProject}
+                            >
+                                Créer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Trash Modal Component
+        function TrashModal() {
+            const { 
+                showTrash, 
+                setShowTrash, 
+                trash, 
+                restoreFromTrash, 
+                permanentlyDelete,
+                emptyTrash,
+                selectProject
+            } = useContext(AppContext);
+            
+            if (!showTrash) return null;
+            
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl slide-up max-h-[80vh] flex flex-col">
+                        <div className="p-6 flex-1 overflow-y-auto">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-medium text-gray-900">Corbeille</h3>
+                                <button 
+                                    onClick={() => setShowTrash(false)}
+                                    className="text-gray-400 hover:text-gray-500"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            {trash.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun projet dans la corbeille</h3>
+                                    <p className="mt-1 text-sm text-gray-500">Les projets que vous archivez apparaîtront ici.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {trash.map(project => (
+                                        <div key={project.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                                            <div>
+                                                <h4 className="text-sm font-medium text-gray-900">{project.name}</h4>
+                                                <p className="text-xs text-gray-500">
+                                                    Archivé le {project.updatedAt.toLocaleDateString('fr-FR', { 
+                                                        day: 'numeric', 
+                                                        month: 'short', 
+                                                        year: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </p>
+                                            </div>
+                                            <div className="flex space-x-2">
+                                                <button
+                                                    onClick={() => {
+                                                        restoreFromTrash(project.id);
+                                                        selectProject(project.id);
+                                                        setShowTrash(false);
+                                                    }}
+                                                    className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-sm"
+                                                >
+                                                    Restaurer
+                                                </button>
+                                                <button
+                                                    onClick={() => permanentlyDelete(project.id)}
+                                                    className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-sm"
+                                                >
+                                                    Supprimer
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="bg-gray-50 px-6 py-3 flex justify-between items-center rounded-b-lg border-t border-gray-200">
+                            <span className="text-sm text-gray-500">
+                                {trash.length} projet(s) dans la corbeille
+                            </span>
+                            <div className="flex space-x-3">
+                                <button
+                                    type="button"
+                                    className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                    onClick={() => setShowTrash(false)}
+                                >
+                                    Fermer
+                                </button>
+                                {trash.length > 0 && (
+                                    <button
+                                        type="button"
+                                        className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                        onClick={emptyTrash}
+                                    >
+                                        Vider la corbeille
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Project Dashboard Component
+        function ProjectDashboard() {
+            const { projects, selectProject, setShowNewProjectModal, moveToTrash } = useContext(AppContext);
+            
+            return (
+                <div className="max-w-7xl mx-auto">
+                    <div className="text-center mb-8">
+                        <h2 className="text-3xl font-bold text-gray-900 mb-2">Bienvenue sur Madsea</h2>
+                        <p className="text-lg text-gray-600">Transformez vos storyboards en séquences visuelles stylisées</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {projects.map(project => (
+                            <div 
+                                key={project.id} 
+                                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
+                            >
+                                <div className="h-40 bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center relative">
+                                    <span className="text-white text-4xl font-bold">{project.name.charAt(0)}</span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            moveToTrash(project.id);
+                                        }}
+                                        className="absolute top-2 right-2 bg-black bg-opacity-50 text-white p-1 rounded-full hover:bg-opacity-70"
+                                        title="Archiver le projet"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div className="p-4">
+                                    <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        {project.type === 'serie' 
+                                            ? `Série (${project.episodes.length} épisodes)` 
+                                            : 'Projet unitaire'}
+                                    </p>
+                                    <div className="mt-4 flex justify-between items-center">
+                                        <span className="text-xs text-gray-400">
+                                            {project.updatedAt.toLocaleDateString('fr-FR', { 
+                                                day: 'numeric', 
+                                                month: 'short', 
+                                                year: 'numeric' 
+                                            })}
+                                        </span>
+                                        <button 
+                                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                            onClick={() => selectProject(project.id)}
+                                        >
+                                            Ouvrir
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        
+                        <div 
+                            className="bg-white rounded-lg shadow-md overflow-hidden border-2 border-dashed border-gray-300 hover:border-blue-500 transition-colors cursor-pointer"
+                            onClick={() => setShowNewProjectModal(true)}
+                        >
+                            <div className="h-full flex flex-col items-center justify-center p-6">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Nouveau projet</h3>
+                                <p className="text-sm text-gray-500 text-center">Commencez un nouveau projet de storyboard</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Episode Selector Component
+        function EpisodeSelector() {
+            const { activeProject, activeEpisode, selectEpisode, addEpisode } = useContext(AppContext);
+            
+            if (!activeProject) return null;
+            
+            return (
+                <div className="mb-6">
+                    <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+                        {activeProject.episodes.map(episode => (
+                            <button
+                                key={episode.id}
+                                onClick={() => selectEpisode(episode.id)}
+                                className={`px-4 py-2 rounded-md whitespace-nowrap ${activeEpisode?.id === episode.id ? 'bg-blue-600 text-white' : 'bg-white hover:bg-gray-100'}`}
+                            >
+                                {activeProject.type === 'serie' 
+                                    ? `E${episode.number.substring(0, 1)}${episode.number.substring(1).padStart(2, '0')}` 
+                                    : `Épisode ${episode.number}`}: {episode.name}
+                            </button>
+                        ))}
+                        
+                        <button 
+                            className="px-4 py-2 rounded-md bg-white hover:bg-gray-100 text-blue-600 whitespace-nowrap"
+                            onClick={addEpisode}
+                        >
+                            + Ajouter un épisode
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Scene Toolbar Component
+        function SceneToolbar() {
+            const { 
+                scenes, 
+                selectedScenes, 
+                selectAllScenes, 
+                viewMode, 
+                setViewMode,
+                isGenerating,
+                generateStyle,
+                addNotification
+            } = useContext(AppContext);
+            
+            if (scenes.length === 0) return null;
+            
+            return (
+                <div className="bg-white rounded-lg shadow-sm p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center space-x-4">
+                        <div className="flex items-center">
+                            <input 
+                                type="checkbox" 
+                                checked={selectedScenes.length === scenes.length && scenes.length > 0}
+                                onChange={selectAllScenes}
+                                className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">
+                                {selectedScenes.length > 0 
+                                    ? `${selectedScenes.length} sélectionné(s)` 
+                                    : 'Tout sélectionner'}
+                            </span>
+                        </div>
+                        
+                        {selectedScenes.length > 0 && (
+                            <div className="flex space-x-2">
+                                <button 
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md text-sm flex items-center"
+                                    onClick={() => addNotification('Édition par lot', 'info')}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                    Éditer
+                                </button>
+                                
+                                <button 
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md text-sm flex items-center"
+                                    onClick={() => addNotification('Suppression', 'info')}
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 011.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    Supprimer
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="flex items-center space-x-4">
+                        <div className="flex bg-gray-100 rounded-md p-1">
+                            <button
+                                onClick={() => setViewMode('grid')}
+                                className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'}`}
+                                title="Vue grille"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`p-1.5 rounded ${viewMode === 'list' ? 'bg-white shadow-sm' : 'hover:bg-gray-200'}`}
+                                title="Vue liste"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <div className="relative">
+                            <button 
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center"
+                                disabled={isGenerating}
+                                onClick={() => document.getElementById('style-dropdown').classList.toggle('hidden')}
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Génération...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+                                        </svg>
+                                        Appliquer un style
+                                    </>
+                                )}
+                            </button>
+                            
+                            <div id="style-dropdown" className="hidden absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg z-10">
+                                <div className="p-2 border-b border-gray-200">
+                                    <h4 className="text-sm font-medium text-gray-700">Styles disponibles</h4>
+                                </div>
+                                <div className="p-2">
+                                    {stylePresets.map(style => (
+                                        <button
+                                            key={style.id}
+                                            onClick={() => generateStyle(style.id)}
+                                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md flex items-center"
+                                        >
+                                            <span className="text-xl mr-3">{style.icon}</span>
+                                            <div>
+                                                <p className="text-sm font-medium">{style.name}</p>
+                                                <p className="text-xs text-gray-500">{style.description}</p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Upload Area Component
+        function UploadArea() {
+            const { handleFileUpload, addNotification, isUploading, uploadProgress, extractionProgress } = useContext(AppContext);
+            const [isDragging, setIsDragging] = useState(false);
+            
+            const handleDragEnter = (e) => {
+                e.preventDefault();
+                setIsDragging(true);
+            };
+            
+            const handleDragLeave = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+            };
+            
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileUpload(files);
+                }
+            };
+            
+            const handleFileChange = (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileUpload(e.target.files);
+                }
+            };
+            
+            return (
+                <div className="max-w-3xl mx-auto">
+                    <div 
+                        className={`border-2 border-dashed rounded-lg p-12 text-center ${isDragging ? 'dropzone-active border-blue-500' : 'border-gray-300'}`}
+                        onDragEnter={handleDragEnter}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                    >
+                        {isUploading ? (
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-lg font-medium text-gray-900">Téléchargement en cours</h3>
+                                    <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5">
+                                        <div 
+                                            className="bg-blue-600 h-2.5 rounded-full" 
+                                            style={{ width: `${uploadProgress}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="mt-1 text-sm text-gray-500">{uploadProgress}% complet</p>
+                                </div>
+                                
+                                {uploadProgress === 100 && (
+                                    <div className="mt-6">
+                                        <h3 className="text-lg font-medium text-gray-900">Extraction des scènes</h3>
+                                        <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5">
+                                            <div 
+                                                className="bg-green-600 h-2.5 rounded-full" 
+                                                style={{ width: `${extractionProgress}%` }}
+                                            ></div>
+                                        </div>
+                                        <p className="mt-1 text-sm text-gray-500">
+                                            {extractionProgress}% complet - Extraction: {Math.floor(extractionProgress/100*8)}/8 scènes détectées
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                <h3 className="mt-2 text-lg font-medium text-gray-900">
+                                    Déposez votre storyboard ici
+                                </h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Formats acceptés: PDF, ZIP ou images (JPG, PNG)
+                                </p>
+                                <div className="mt-6">
+                                    <label htmlFor="file-upload" className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                        <span>Parcourir les fichiers</span>
+                                        <input 
+                                            id="file-upload" 
+                                            name="file-upload" 
+                                            type="file" 
+                                            className="sr-only" 
+                                            accept=".pdf,.zip,.jpg,.jpeg,.png"
+                                            onChange={handleFileChange}
+                                            multiple
+                                        />
+                                    </label>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    
+                    <div className="mt-8 bg-white rounded-lg shadow-sm p-6">
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Comment utiliser Madsea</h3>
+                        <ol className="space-y-4">
+                            <li className="flex items-start">
+                                <span className="flex-shrink-0 bg-blue-500 text-white rounded-full h-6 w-6 flex items-center justify-center">1</span>
+                                <p className="ml-3 text-sm text-gray-700">Téléchargez votre storyboard au format PDF, ZIP ou images</p>
+                            </li>
+                            <li className="flex items-start">
+                                <span className="flex-shrink-0 bg-blue-500 text-white rounded-full h-6 w-6 flex items-center justify-center">2</span>
+                                <p className="ml-3 text-sm text-gray-700">Madsea extraira automatiquement chaque scène avec les dialogues et indications</p>
+                            </li>
+                            <li className="flex items-start">
+                                <span className="flex-shrink-0 bg-blue-500 text-white rounded-full h-6 w-6 flex items-center justify-center">3</span>
+                                <p className="ml-3 text-sm text-gray-700">Organisez et éditez les métadonnées de vos scènes</p>
+                            </li>
+                            <li className="flex items-start">
+                                <span className="flex-shrink-0 bg-blue-500 text-white rounded-full h-6 w-6 flex items-center justify-center">4</span>
+                                <p className="ml-3 text-sm text-gray-700">Appliquez des styles visuels et générez vos séquences</p>
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+            );
+        }
+
+        // Scene Grid Component
+        function SceneGrid() {
+            const { scenes, selectedScenes, toggleSceneSelection, addNotification } = useContext(AppContext);
+            
+            return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                    {scenes.map(scene => (
+                        <div 
+                            key={scene.id} 
+                            className={`scene-card bg-white rounded-lg shadow-sm overflow-hidden border-2 ${selectedScenes.includes(scene.id) ? 'border-blue-500' : 'border-transparent'} transition-all duration-150`}
+                        >
+                            <div className="relative">
+                                <div className="h-40 bg-gray-200 flex items-center justify-center">
+                                    <span className="text-gray-500">Prévisualisation</span>
+                                </div>
+                                <div className="absolute top-2 left-2">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedScenes.includes(scene.id)}
+                                        onChange={() => toggleSceneSelection(scene.id)}
+                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                                    {scene.type_plan}
+                                </div>
+                            </div>
+                            
+                            <div className="p-3">
+                                <h3 className="text-sm font-medium text-gray-900 truncate">{scene.title}</h3>
+                                <div className="location-highlight p-2 mt-1 rounded text-xs">
+                                    {scene.location}
+                                </div>
+                                <div className="dialogue-box p-2 mt-1 rounded text-xs">
+                                    {scene.dialogue}
+                                </div>
+                                <div className="indication-box p-2 mt-1 rounded text-xs">
+                                    {scene.indication}
+                                </div>
+                                
+                                <div className="mt-3 flex justify-between items-center">
+                                    <button 
+                                        className="text-xs text-blue-600 hover:text-blue-800"
+                                        onClick={() => addNotification(`Édition de ${scene.title}`, 'info')}
+                                    >
+                                        Éditer
+                                    </button>
+                                    <span className="text-xs text-gray-400">v0001</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // Scene List Component
+        function SceneList() {
+            const { scenes, selectedScenes, toggleSceneSelection, addNotification } = useContext(AppContext);
+            
+            return (
+                <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <input 
+                                        type="checkbox" 
+                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                        checked={selectedScenes.length === scenes.length && scenes.length > 0}
+                                        onChange={() => {
+                                            if (selectedScenes.length === scenes.length) {
+                                                selectedScenes.forEach(id => toggleSceneSelection(id));
+                                            } else {
+                                                scenes.forEach(scene => {
+                                                    if (!selectedScenes.includes(scene.id)) {
+                                                        toggleSceneSelection(scene.id);
+                                                    }
+                                                });
+                                            }
+                                        }}
+                                    />
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Scène
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Lieu & Moment
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Dialogue
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Indication
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Actions
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {scenes.map(scene => (
+                                <tr key={scene.id} className={selectedScenes.includes(scene.id) ? 'bg-blue-50' : 'hover:bg-gray-50'}>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedScenes.includes(scene.id)}
+                                            onChange={() => toggleSceneSelection(scene.id)}
+                                            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                        />
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center">
+                                            <div className="flex-shrink-0 h-10 w-16 bg-gray-200 rounded flex items-center justify-center">
+                                                <span className="text-xs text-gray-500">Prev</span>
+                                            </div>
+                                            <div className="ml-4">
+                                                <div className="text-sm font-medium text-gray-900">{scene.title}</div>
+                                                <div className="text-xs text-gray-500">{scene.type_plan}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-sm text-gray-900">{scene.location}</div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="text-sm font-medium text-gray-900">{scene.dialogue}</div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="text-sm text-gray-900">{scene.indication}</div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <button 
+                                            className="text-blue-600 hover:text-blue-900 mr-4"
+                                            onClick={() => addNotification(`Édition de ${scene.title}`, 'info')}
+                                        >
+                                            Éditer
+                                        </button>
+                                        <button 
+                                            className="text-red-600 hover:text-red-900"
+                                            onClick={() => addNotification(`Suppression de ${scene.title}`, 'warning')}
+                                        >
+                                            Supprimer
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
+        // Notification Center Component
+        function NotificationCenter() {
+            const { notifications } = useContext(AppContext);
+            
+            if (notifications.length === 0) return null;
+            
+            return (
+                <div className="fixed bottom-4 right-4 space-y-2 z-50">
+                    {notifications.map(notification => (
+                        <div 
+                            key={notification.id}
+                            className={`toast w-80 p-4 rounded-md shadow-lg flex items-start ${
+                                notification.type === 'error' ? 'bg-red-100 border-l-4 border-red-500' :
+                                notification.type === 'success' ? 'bg-green-100 border-l-4 border-green-500' :
+                                notification.type === 'warning' ? 'bg-yellow-100 border-l-4 border-yellow-500' :
+                                'bg-blue-100 border-l-4 border-blue-500'
+                            }`}
+                        >
+                            <div className="flex-shrink-0 pt-0.5">
+                                {notification.type === 'error' ? (
+                                    <svg className="h-5 w-5 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                ) : notification.type === 'success' ? (
+                                    <svg className="h-5 w-5 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                ) : notification.type === 'warning' ? (
+                                    <svg className="h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.593 6 8.925 6 12v3.159c0 .538-.214 1.055-.595 1.436L4 20v1a2 2 0 002 2h6a2 2 0 002-2V14.25a2.015 2.015 0 011.571-.821 2.007 2.007 0 01.754 0 1.709 1.709 0 00.254 1.146z" />
+                                    </svg>
+                                )}
+                            </div>
+                            <div className="ml-3">
+                                <p className="text-sm font-medium text-gray-900">{notification.message}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+
+</html>

@@ -3,10 +3,11 @@
 Backend local CRUD pour gestion projets/épisodes/scènes Madsea (stockage JSON, prêt à migrer cloud)
 API REST minimaliste pour intégration front.
 """
-from flask import Flask, request, jsonify
+from flask import Blueprint, request, jsonify
 import os, json
 
-app = Flask(__name__)
+project_bp = Blueprint('project_bp', __name__)
+
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), '../projects.json')
 
 def load_projects():
@@ -19,11 +20,11 @@ def save_projects(data):
     with open(PROJECTS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-@app.route('/api/projects', methods=['GET'])
+@project_bp.route('/projects', methods=['GET'])
 def get_projects():
     return jsonify(load_projects())
 
-@app.route('/api/projects', methods=['POST'])
+@project_bp.route('/projects', methods=['POST'])
 def create_project():
     data = load_projects()
     body = request.json
@@ -36,7 +37,7 @@ def create_project():
     save_projects(data)
     return jsonify(new_proj), 201
 
-@app.route('/api/projects/<proj_id>/episodes', methods=['POST'])
+@project_bp.route('/projects/<proj_id>/episodes', methods=['POST'])
 def add_episode(proj_id):
     data = load_projects()
     proj = next((p for p in data["projects"] if p["id"] == proj_id), None)
@@ -53,13 +54,10 @@ def add_episode(proj_id):
     save_projects(data)
     return jsonify(new_ep), 201
 
-@app.route('/api/projects/<proj_id>', methods=['GET'])
+@project_bp.route('/projects/<proj_id>', methods=['GET'])
 def get_project(proj_id):
     data = load_projects()
     proj = next((p for p in data["projects"] if p["id"] == proj_id), None)
     if not proj:
         return jsonify({"error": "Project not found"}), 404
     return jsonify(proj)
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5050)

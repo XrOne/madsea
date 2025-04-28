@@ -1,0 +1,29 @@
+{
+    "python.terminal.activateEnvironment": true,
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}"
+    ],
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.profiles.windows": {
+        "PowerShell": {
+            "source": "PowerShell",
+            "icon": "terminal-powershell"
+        }
+    },
+    "python.poetryPath": "uv",
+    "python.pipArgs": [],
+    "python.pipenvPath": "uv",
+    "python.venvPath": "${workspaceFolder}/.venv",
+    "python.packageManager": "custom",
+    "python.customPackageManagerExecutables": {
+        "install": "uv pip install",
+        "uninstall": "uv pip uninstall",
+        "list": "uv pip list",
+        "freeze": "uv pip freeze"
+    }
+}
