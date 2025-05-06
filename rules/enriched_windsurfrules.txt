@@ -1,0 +1,127 @@
+---
+description: Règles globales pour le projet Madsea
+globs: 
+alwaysApply: true
+---
+
+# Architecture Madsea
+
+## Objectif
+Transformer des storyboards en séquences visuelles stylisées par IA, en respectant la composition et permettant différents styles visuels.
+
+## Structure existante
+- Frontend: Interface React existante (deepsitefront.html) avec workflow d'extraction et génération
+- Backend Python/FastAPI à développer pour supporter l'interface existante
+- Intégration ComfyUI pour génération d'images
+- Nomenclature standardisée: E202_SQ0010-0010_AI-concept_v0001.png
+
+## Architecture hybride local/cloud
+- ComfyUI comme moteur principal local pour la génération d'images
+- Passerelle API intelligente pour intégrer:
+  - API DALL-E 3/Image 1 (OpenAI)
+  - API Midjourney
+  - Stable Diffusion 3
+  - Qwen 3
+  - Autres API récentes de génération vidéo/image
+- Paramétrage dans Settings pour intégrer différentes clés API
+- Fallback automatique local/cloud selon disponibilité des ressources
+
+## Services backend à développer
+1. Extraction: PDF parsing et OCR pour extraire images et textes (PyMuPDF + Tesseract)
+2. ComfyUI Bridge: Intégration avec ComfyUI local via API (http://localhost:8188)
+3. FileManager: Gestion des fichiers selon la nomenclature stricte
+4. API Bridge: Passerelle vers services cloud (DALL-E, Midjourney, etc.)
+5. FTP Manager: Envoi automatisé vers le serveur FTP du réalisateur
+6. Animation Engine: Génération de séquences vidéo à partir des images validées
+
+## Workflow complet
+1. Import storyboard → Extraction PDF/OCR des images et textes
+2. Restructuration du contenu (plans, séquences, dialogues, indications techniques)
+3. Génération d'images stylisées (ComfyUI/API cloud)
+4. Envoi FTP au réalisateur avec nomenclature standardisée
+5. Gestion des retours/validations du réalisateur
+6. Regénération des images non validées
+7. Animation des images validées en séquences vidéo
+
+## Paramètres techniques
+- Résolution: 1920x1080 (16:9)
+- Styles prédéfinis:
+  - "declic" (Ombres chinoises)
+  - "labo" (Style laboratoire scientifique)
+  - "expressionniste" (Style artistique)
+- Modèles: SD15, SDXL, SD3 selon disponibilité
+- ControlNet: Enabled (type canny/depth/pose selon besoin)
+- Compute:
+  - prefer_local: true
+  - fallback_to_cloud: true
+  - local_engine: "ComfyUI"
+  - cloud_providers: [openai_dalle, midjourney, runway, google_gemini_studio, wan_2.1, qwen_max]
+
+## Priorités techniques
+- Extraction PDF multi-pages avec OCR fiable
+- API backend pour traiter les requêtes du frontend existant
+- Workflow ComfyUI avec ControlNet pour respecter la composition
+- Tests locaux systématiques
+- Support complet du format E202_SQ0010-0010_AI-concept_v0001.png
+- Intégration FTP pour validation réalisateur
+- Animation des images validées
+
+---
+description: Règles spécifiques pour les composants Madsea
+globs: ["backend/**/*.py", "workflows/**/*.json"]
+---
+
+## Backend (Python/FastAPI)
+- Développer API RESTful correspondant aux endpoints attendus par l'interface React
+- Service `extraction`: Extraire images+texte des PDFs avec PyMuPDF/Tesseract
+  - Retourner les images et le texte extrait formaté pour le frontend
+- Service `comfyui_bridge`: Intégrer avec ComfyUI local
+  - Endpoint générer image: POST /api/generate_image
+  - Formats d'entrée/sortie compatibles avec l'UI existante
+- Service `file_manager`: Standardiser noms selon E{episode}_SQ{sequence}-{plan}_{task}_v{version}.{ext}
+- Service `cloud_api_manager`: Intégrer et gérer les API externes (DALL-E, Midjourney)
+  - Endpoint multi-API: POST /api/cloud_generate avec paramètre "provider"
+  - Gestion des clés API et des quotas
+- Service `ftp_manager`: Gérer les transferts FTP pour la validation réalisateur
+  - Endpoint export FTP: POST /api/export_ftp
+  - Fonction d'importation des retours/validations
+- Service `animation`: Générer des vidéos à partir des images validées
+  - Endpoint animation: POST /api/generate_animation
+
+## Intégration ComfyUI
+- Créer des workflows JSON prédéfinis pour les styles:
+  - "Ombres chinoises" (silhouettes noires)
+  - "Laboratoire" (style scientifique)
+  - "Expressionniste" (style artistique)
+- Utiliser ControlNet (Depth+Edge) pour respecter la composition
+- Adapter les workflows pour lire/écrire dans la nomenclature du projet
+- Utiliser l'API WebSocket de ComfyUI pour les générations
+- Intégrer l'option d'entraînement de LoRA personnalisés:
+  - Upload d'images de référence
+  - Configuration du training (epochs, learning rate)
+  - Sauvegarde et chargement des modèles LoRA personnalisés
+
+## Interface utilisateur
+- S'inspirer de SwarmUI pour les composants du frontend HTML
+- Conserver l'interface React existante (deepsitefront.html)
+- Intégrer les fonctionnalités avancées:
+  - Sélection de moteur de génération (local/cloud)
+  - Configuration des paramètres techniques
+  - Monitoring du processus FTP et animation
+  - Formulaire d'upload/entraînement de LoRA personnalisés
+
+## Structure des données
+- Respecter le format de données attendu par le frontend React
+- Structure par projet > épisode > scène comme dans l'interface
+- Format scene: {id, image_url, title, location, dialogue, indication, type_plan, validation_status}
+- Retourner les chemins d'images valides pour l'interface web
+
+## Endpoints API
+- POST /api/upload_storyboard: Accepte PDF, retourne scènes extraites
+- POST /api/generate_style: Applique style sur scènes sélectionnées (ComfyUI ou API cloud)
+- GET /api/projects: Liste des projets
+- POST /api/episodes: Gestion des épisodes
+- POST /api/train_lora: Entraîne un nouveau modèle LoRA personnalisé
+- POST /api/export_ftp: Exporte les images vers le serveur FTP du réalisateur
+- GET /api/validation_status: Récupère les statuts de validation du réalisateur
+- POST /api/generate_animation: Génère des séquences vidéo à partir des images validées

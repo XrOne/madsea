@@ -4,7 +4,9 @@
 1. Importer PDF → Extraire pages automatiquement
 2. Vérifier extraction → Ajuster OCR si nécessaire
 3. Sélectionner style → Générer images pour tous les plans
-4. Prévisualiser/Comparer → Exporter résultats finaux
+4. Exporter vers FTP du réalisateur → Gérer validations/retours
+5. Regenerer plans non validés → Finaliser séquence validée
+6. Animer images validées → Produire vidéo finale
 
 ---
 
@@ -76,6 +78,93 @@
 - Frontend React.js → Backend
 - Extraction → Tesseract OCR
 - Génération → ComfyUI
+- Cloud APIs → OpenAI DALL-E 3, Midjourney, autres APIs
+- FTP Manager → Serveur du réalisateur
+- Animation Engine → Services audio/vidéo
+
+## Architecture hybride local/cloud
+
+### Stratégie d’intégration
+
+```
++---------------------------+    +---------------------------+
+|       LOCAL ENGINE        |    |       CLOUD ENGINE       |
+| (ComfyUI, SD local, etc.)|<-->| (DALL-E, Midjourney,...) |
++---------------------------+    +---------------------------+
+            ↑                              ↑
+            |                              |
+            v                              v
++---------------------------+    +---------------------------+
+|     BRIDGE SERVICE        |<-->|     API MANAGER          |
+| (load balancing, routing) |    | (keys, quotas, retries)  |
++---------------------------+    +---------------------------+
+                    ↑
+                    |
+                    v
+      +---------------------------+
+      |      BACKEND API          |
+      | (generation orchestration)|
+      +---------------------------+
+                    ↑
+                    |
+                    v
+      +---------------------------+
+      |      FRONTEND UI          |
+      |    (deepsitefront.html)   |
+      +---------------------------+
+```
+
+### Logique de basculement
+
+1. L'utilisateur sélectionne un moteur préféré (local ou cloud) ou "auto"
+2. Si "auto" est sélectionné :
+   - Essai d'abord avec le moteur local (ComfyUI)
+   - En cas d'échec, indisponibilité ou timeout > 30s, bascule automatique vers cloud
+   - Priorité configurable des API cloud (ex: DALL-E 3 > Midjourney > Stable Diffusion API)
+3. Gestion intelligente des quotas et coûts :
+   - Tracking du nombre d'appels par fournisseur
+   - Alerte si seuil de budget atteint
+   - Rotation des clés API si multiple fournies
+
+## Flux de validation via FTP
+
+### Processus d'export et validation
+
+```
+1. Madsea → Génération d'images pour plans (local/cloud)
+   |
+2. ↓ Export FTP automatique (à la demande ou automatique)
+   |
+   v
+3. Serveur FTP du réalisateur
+   |
+   ↓ (Notification d'envoi complété)
+   |
+4. Validation par le réalisateur (externe à l'application)
+   |
+   ↓ (FTP ou annotation dans Madsea)
+   |
+5. Récupération des validations/rejets
+   |
+   ↓ (Filtrage plans validés/rejets)
+   |
+6. Regénération uniquement des plans rejetés
+   |
+   ↓ (Répétition processus jusqu'à validation complète)
+   |
+7. Finalisation de la séquence validée
+```
+
+### Nomenclature standardisée pour validation
+
+Chaque image est exportée selon le format :
+```
+E{episode}_SQ{sequence}-{plan}_{task}_v{version}.{ext}
+```
+
+Exemple : `E202_SQ0010-0010_AI-concept_v0001.jpg`
+
+Les versions sont incrémentées automatiquement pour chaque regénération.
 
 ## Standards de code
 - Python: PEP 8, docstrings Google format
@@ -133,6 +222,76 @@ Aligner l'interface utilisateur avec la vision "production SwarmUI modifié" : g
 - Vérifier la compatibilité avec les modules Cursor et Gemini 2.5
 - Ajouter des messages d'erreur clairs et des fallback si une intégration IA échoue
 - Documenter toute limitation ou bug connu lors de l'intégration
+
+## Animation et génération vidéo
+
+### Pipeline de génération vidéo
+
+```
++--------------------+    +--------------------+    +--------------------+
+|  Images Validées  |--->|  Traitement Vidéo  |--->|  Export Final      |
+| (Plans approuvés) |    | (Animation/Effets) |    | (MP4, MOV, etc.)   |
++--------------------+    +--------------------+    +--------------------+
+        |                          ^
+        v                          |
++--------------------+    +--------------------+
+| Paramètres d'anim. |    |  Assets Audio      |
+| (Transitions, etc.) |    | (Musique, Voix)    |
++--------------------+    +--------------------+
+```
+
+### Méthodes d'animation
+
+1. **Génération animée simple**:
+   - Fondu entre images clés (cross-dissolve)
+   - Déplacement de caméra simulé (Ken Burns)
+   - Calage sur time code
+
+2. **Animation IA avancée**:
+   - Utilisation de modèles text-to-video (ModelScope, VideoFusion, etc.)
+   - Modèles image-to-video (Gen-2, Runway, etc.)
+   - Interpolation d'images via FILM ou modèles de difféomorphisme
+
+3. **Animation hybride**:
+   - Génération des transitions entre plans
+   - Animation des éléments au sein d'un plan
+   - Déformation controlée (MotionDiff, ControlNet Animation)
+
+### Paramètres techniques vidéo
+
+| Paramètre          | Valeur standard      | Alternatives          |
+|---------------------|---------------------|------------------------|
+| Format              | MP4 (H.264)         | MOV, WebM             |
+| Résolution          | 1920x1080 (HD)      | 3840x2160 (4K)        |
+| Framerate           | 24 fps              | 30 fps, 60 fps        |
+| Bitrate             | 8-12 Mbps (HD)      | 35-45 Mbps (4K)       |
+| Durée par plan      | Selon timecode      | Min 2s par plan       |
+| Transitions         | Fondu 12-24 frames  | Cut, Wipe             |
+| Audio               | AAC 320kbps         | PCM                   |
+
+## Entraînement LoRA personnalisé
+
+### Workflow d'entraînement
+
+1. **Préparation des données**:
+   - Collection d'images de référence (8-20 images de qualité)
+   - Préprocessing (redimensionnement, augmentation, annotations)
+
+2. **Configuration de l'entraînement**:
+   - Sélection du modèle de base (SD 1.5, SDXL, etc.)
+   - Paramètres LoRA (rank: 4-128, alpha: 1-4)
+   - Learning rate: 1e-4 standard
+   - Époques: 1000-3000 selon dataset
+
+3. **Processus d'entraînement**:
+   - Local: utilisation de la GPU si disponible
+   - Cloud: service d'entraînement déporté si nécessaire
+   - Suivi: métriques de perte, échantillons de validation
+
+4. **Export et utilisation**:
+   - Format: safetensors
+   - Intégration dans ComfyUI
+   - Métadonnées: trigger words, poids recommandé
 
 ## Gestion des versions
 - Incrémentation automatique des versions de fichiers
