@@ -10,7 +10,7 @@
 
 ### Pipeline extraction adaptative Madsea
 
-#### Schéma d’architecture
+#### Schéma d'architecture
 ```
 +-------------------+
 |   Import Storyboard|
@@ -44,15 +44,15 @@
 ```
 
 #### Détail des modules
-- **Extraction d’images** : découpe chaque page ou panel du storyboard en images individuelles (PyMuPDF, pdf2image, Pillow). Adaptable aux formats complexes.
-- **Extraction de texte (OCR)** : applique l’OCR à chaque image/panel (Tesseract, EasyOCR, PaddleOCR). Nettoyage, filtrage, reconnaissance des types de plans, dialogues…
-- **Structuration des métadonnées** : associe chaque image à ses textes/annotations. Génère un JSON structuré (scènes, timecodes, descriptions, etc.). Permet l’édition/correction par l’utilisateur.
+- **Extraction d'images** : découpe chaque page ou panel du storyboard en images individuelles (PyMuPDF, pdf2image, Pillow). Adaptable aux formats complexes.
+- **Extraction de texte (OCR)** : applique l'OCR à chaque image/panel (Tesseract, EasyOCR, PaddleOCR). Nettoyage, filtrage, reconnaissance des types de plans, dialogues…
+- **Structuration des métadonnées** : associe chaque image à ses textes/annotations. Génère un JSON structuré (scènes, timecodes, descriptions, etc.). Permet l'édition/correction par l'utilisateur.
 - **Stockage et API** : sauvegarde images extraites + JSON dans le dossier projet. Expose des endpoints Flask pour lister, extraire, modifier, télécharger scènes et métadonnées.
 
 #### Extensibilité
-- Pipeline modulaire : chaque étape est un module indépendant, facilement remplaçable (OCR, découpage, structuration, stockage).
-- Possibilité d’intégrer de nouveaux formats (Figma, PSD…), modules OCR ou segmentation IA interchangeables.
-- Gestion des erreurs, logs, relance d’étape isolée.
+- Pipeline modulaire : chaque étape est un module indépendant, facilement remplaçable (OCR, découpage, structuration, stockage).
+- Possibilité d'intégrer de nouveaux formats (Figma, PSD…), modules OCR ou segmentation IA interchangeables.
+- Gestion des erreurs, logs, relance d'étape isolée.
 - Open source privilégié (Tesseract, PyMuPDF, etc.).
 - API RESTful pour communication frontend/backend.
 - Documentation systématique.
@@ -60,12 +60,27 @@
 ## Workflows développeur
 1. Développer services indépendamment (extraction, génération, UI)
 2. Tester extraction PDF en priorité (multi-pages, OCR)
-3. Configurer ComfyUI avec workflows ControlNet
-4. Respecter nomenclature pour tous les fichiers générés
+3. Tester génération ComfyUI (respect storyboard, styles)
+4. Implémenter interfaces (backend et frontend)
+5. Relier services (extraction → génération → export)
+
+## Validation et sécurité
+- Test unitaire par service
+- Logs détaillés pour chaque étape
+- Backup automatique avant opérations critiques
+- Gestion des erreurs et fallback
+- Messages utilisateur clairs et informatifs
+
+## Intégrations
+- Backend Flask/FastAPI → ComfyUI
+- Frontend React.js → Backend
+- Extraction → Tesseract OCR
+- Génération → ComfyUI
 
 ## Standards de code
-- Python: docstrings Google format, typing hints
-- Frontend: React fonctionnel, Tailwind pour UI
+- Python: PEP 8, docstrings Google format
+- JavaScript: ES6+, JSDoc
+- API: RESTful JSON
 - Tests: unitaires avant intégration
 - Documentation: Markdown dans docs/
 
@@ -117,8 +132,7 @@ Aligner l'interface utilisateur avec la vision "production SwarmUI modifié" : g
 ### Sécurité et robustesse
 - Vérifier la compatibilité avec les modules Cursor et Gemini 2.5
 - Ajouter des messages d'erreur clairs et des fallback si une intégration IA échoue
-- Documenter toute limitation ou bug connu lors de l'intégration pour comparaison
-- Nomenclature stricte E202_SQ0010-0010_AI-concept_v0001.png
+- Documenter toute limitation ou bug connu lors de l'intégration
 
 ## Gestion des versions
 - Incrémentation automatique des versions de fichiers

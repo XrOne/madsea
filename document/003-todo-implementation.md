@@ -1,51 +1,44 @@
 instale avec mcp 
-# 003-todo-implementation.md
+# 003-todo-implementation.md (Mise à jour MCP)
 
-## Liste des Tâches d'Implémentation Madsea
+## Suivi des tâches d’implémentation Madsea
 
-Ce document centralise les tâches d'implémentation prioritaires pour Madsea, en suivant une approche incrémentielle pour minimiser les régressions et maximiser la qualité.
+Ce document centralise et priorise les tâches, avec une structure claire pour le suivi manuel et la collaboration avec l’agent MCP/Windsurf.
 
-### 1. Audit et Stabilisation de l'Existant
+---
 
-- [x] **1.1 Audit du code backend existant**
-  - [x] Réviser `app.py` pour identifier les endpoints d'extraction
-  - [ ] Vérifier les dépendances (PyMuPDF, Tesseract, etc.) -> *Vérification partielle faite, à compléter*
-  - [ ] Documenter l'architecture et les flux actuels
+### 1. Audit & Stabilisation
 
-- [x] **1.2 Audit du frontend**
-  - [x] Vérifier les composants UploadStoryboard, SceneDisplay, SceneGrid -> *UploadStoryboard adapté, reste à vérifier les autres*
-  - [x] Identifier les points d'intégration avec le backend
-  - [x] Documenter les besoins en APIs non couverts -> *Partiellement couvert par l'adaptation UploadStoryboard*
+- [x] **Audit backend**
+  - [x] Réviser `app.py` et endpoints extraction
+  - [ ] Vérifier et documenter toutes les dépendances (PyMuPDF, Tesseract, etc.)
+  - [ ] Documenter architecture et flux réels (schéma à intégrer dans docs/MCP/diagrams/)
 
-- [ ] **1.3 Vérification des dépendances**
-  - [ ] Lister les bibliothèques requises pour extraction et OCR
-  - [ ] Vérifier les versions et compatibilités
-  - [x] Créer/mettre à jour un fichier requirements.txt -> *Fichier présent, vérifier s'il est complet*
+- [x] **Audit frontend**
+  - [x] Vérifier UploadStoryboard, SceneDisplay, SceneGrid
+  - [x] Identifier intégration backend
+  - [ ] Lister besoins API non couverts
 
-### 2. Extraction Adaptative (Pipeline d'Ingestion)
+- [ ] **Vérification dépendances**
+  - [ ] Lister bibliothèques extraction/OCR
+  - [ ] Vérifier versions/compatibilités
+  - [x] Fichier requirements.txt à jour ? (à revérifier)
 
-- [ ] **2.1 Refactoring du code d'extraction existant (Backend)**
-  - [x] Modulariser le code d'extraction en fonctions autonomes -> *Blueprint créé (`005-backend-extraction.py`)*
-  - [ ] Améliorer la gestion d'erreurs et logging
-  - [ ] Ajouter des commentaires et documentation
-  - [ ] **Implémenter la logique d'extraction réelle (simple et OCR)** pour remplacer les placeholders actuels dans `005-backend-extraction.py`.
-  - [ ] **Optionnel :** Mettre en place une extraction asynchrone (e.g., Celery, RQ) pour les traitements longs (OCR).
+---
 
-- [ ] **2.2 Amélioration de l'OCR (Backend)**
-  - [ ] Implémenter/optimiser Tesseract (ou autre) pour l'extraction de texte
-  - [ ] Ajouter des filtres de prétraitement pour optimiser la détection
-  - [ ] Structurer le texte extrait (type de plan, dialogues, etc.)
+### 2. Extraction Adaptative (Backend)
 
-- [ ] **2.3 Structuration JSON (Backend)**
-  - [ ] Définir un schéma JSON clair et robuste pour les scènes extraites
-  - [ ] Implémenter l'export/import de ce format
-  - [ ] Assurer la compatibilité avec le frontend
+- [x] **Refactoring extraction**
+  - [x] Modulariser extraction (fonctions autonomes, blueprints)
+  - [ ] Gestion d’erreurs/logging détaillés
+  - [ ] Commentaires/docstrings Google format
+  - [ ] Implémenter extraction réelle (simple/OCR)
+  - [ ] Extraction asynchrone (Celery/RQ) [optionnel]
 
-- [x] **2.4 Intégration Frontend `UploadStoryboard.jsx`**
-  - [x] Adapter l'UI pour choisir entre extraction simple et OCR.
-  - [x] Appeler les bons endpoints backend (`/api/upload_storyboard` ou `/api/extraction_storyboard`).
-  - [x] Afficher la progression détaillée (uploading, extracting, saving).
-  - [x] Intégrer l'appel à `createAutosave` après extraction.
+- [ ] **OCR avancé**
+  - [ ] Optimiser Tesseract ou autre OCR
+  - [ ] Filtres prétraitement images
+  - [ ] Structuration texte (type plan, dialogues, etc.)
 
 - [ ] **2.5 Intégration Frontend `ProjectView.jsx`**
   - [ ] Passer le `projectId` et `episodeId` actifs au composant `UploadStoryboard`.

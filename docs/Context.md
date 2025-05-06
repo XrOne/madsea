@@ -65,3 +65,4 @@ lovable_madsea/
 ├── styles/           # Gestion des styles IA
 ├── models/           # Modèles et LoRAs
 └── outputs/          # Résultats générés
+```
