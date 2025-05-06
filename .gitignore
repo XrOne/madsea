@@ -8,4 +8,6 @@ uploads/
 *.webp
 *.pdf
 *.zip
+ComfyUI/
+models/
 !uploads/.gitkeep
