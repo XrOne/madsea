@@ -1,0 +1,63 @@
+---
+description: Règles globales pour le projet Madsea
+globs: 
+alwaysApply: true
+---
+
+# Architecture Madsea
+
+## Objectif
+Transformer des storyboards en séquences visuelles stylisées par IA, en respectant la composition et permettant différents styles visuels.
+
+## Structure existante
+- Frontend: Interface React existante (deepsitefront.html) avec workflow d'extraction et génération
+- Backend Python/FastAPI à développer pour supporter l'interface existante
+- Intégration ComfyUI pour génération d'images
+- Nomenclature standardisée: E202_SQ0010-0010_AI-concept_v0001.png
+
+## Services backend à développer
+1. Extraction: PDF parsing et OCR pour extraire images et textes (PyMuPDF + Tesseract)
+2. ComfyUI Bridge: Intégration avec ComfyUI local via API (http://localhost:8188)
+3. FileManager: Gestion des fichiers selon la nomenclature stricte
+
+## Priorités techniques
+- Extraction PDF multi-pages avec OCR fiable
+- API backend pour traiter les requêtes du frontend existant
+- Workflow ComfyUI avec ControlNet pour respecter la composition
+- Tests locaux systématiques
+- Support complet du format E202_SQ0010-0010_AI-concept_v0001.png
+
+---
+description: Règles spécifiques pour les composants Madsea
+globs: ["backend/**/*.py", "workflows/**/*.json"]
+---
+
+## Backend (Python/FastAPI)
+- Développer API RESTful correspondant aux endpoints attendus par l'interface React
+- Service `extraction`: Extraire images+texte des PDFs avec PyMuPDF/Tesseract
+  - Retourner les images et le texte extrait formaté pour le frontend
+- Service `comfyui_bridge`: Intégrer avec ComfyUI local
+  - Endpoint générer image: POST /api/generate_image
+  - Formats d'entrée/sortie compatibles avec l'UI existante
+- Service `file_manager`: Standardiser noms selon E{episode}_SQ{sequence}-{plan}_{task}_v{version}.{ext}
+
+## Intégration ComfyUI
+- Créer des workflows JSON prédéfinis pour les styles:
+  - "Ombres chinoises" (silhouettes noires)
+  - "Laboratoire" (style scientifique)
+  - "Expressionniste" (style artistique)
+- Utiliser ControlNet (Depth+Edge) pour respecter la composition
+- Adapter les workflows pour lire/écrire dans la nomenclature du projet
+- Utiliser l'API WebSocket de ComfyUI pour les générations
+
+## Structure des données
+- Respecter le format de données attendu par le frontend React
+- Structure par projet > épisode > scène comme dans l'interface
+- Format scene: {id, image_url, title, location, dialogue, indication, type_plan}
+- Retourner les chemins d'images valides pour l'interface web
+
+## Endpoints API
+- POST /api/upload_storyboard: Accepte PDF, retourne scènes extraites
+- POST /api/generate_style: Applique style sur scènes sélectionnées
+- GET /api/projects: Liste des projets
+- POST /api/episodes: Gestion des épisodes
