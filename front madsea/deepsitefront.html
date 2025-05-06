@@ -232,7 +232,10 @@
                         addNotification('Veuillez remplir tous les champs pour une série', 'warning');
                         return;
                     }
-                    nomenclature = `E${newProjectData.season}${newProjectData.episode}_SQ0001-0001_AI-Concept_v0001.jpg`;
+                    const seasonStr = newProjectData.season.toString();
+                    const episodeStr = newProjectData.episode.toString().padStart(2, '0');
+                    const code = `E${seasonStr}${episodeStr}`;
+                    nomenclature = `${code}_SQ0010-0010_AI-concept_v0001.jpg`;
                 }
 
                 const project = {
@@ -245,10 +248,10 @@
                     title: newProjectData.title,
                     nomenclature,
                     episodes: [{
-                        id: `ep_${Date.now()}`,
+                        id: newProjectData.type === 'serie' ? `E${newProjectData.season}${newProjectData.episode.toString().padStart(2, '0')}` : `ep_${Date.now()}`,
                         number: newProjectData.type === 'unitaire' 
                             ? `${newProjectData.episode}` 
-                            : `${newProjectData.season}${newProjectData.episode.toString().padStart(2, '0')}`,
+                            : `E${newProjectData.season}${newProjectData.episode.toString().padStart(2, '0')}`,
                         name: newProjectData.type === 'unitaire' ? newProjectData.title : `Épisode ${newProjectData.episode}`,
                         scenes: []
                     }],
@@ -329,7 +332,7 @@
                     id: episodeId,
                     number: activeProject.type === 'unitaire' 
                         ? `${episodeNumber}` 
-                        : `${activeProject.season}${episodeNumber.toString().padStart(2, '0')}`,
+                        : `E${activeProject.season}${episodeNumber.toString().padStart(2, '0')}`,
                     name: `Nouvel épisode ${episodeNumber}`,
                     scenes: []
                 };
@@ -1221,7 +1224,7 @@
                                 title="Vue liste"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                                 </svg>
                             </button>
                         </div>

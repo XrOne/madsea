@@ -108,3 +108,11 @@ Ce document centralise et priorise les tâches, avec une structure claire pour l
 - Les modifications doivent respecter l'architecture définie dans `001-architecture-extraction-adaptative.md`
 - Privilégier les améliorations incrémentales aux réécritures complètes
 - **IMPORTANT :** Toujours valider les changements avec Charly avant de les appliquer.
+
+### 6. Nomenclature & Placeholders
+
+- [ ] **Nomenclature & Placeholders `extraction_api.py` (upload_storyboard_v3)**
+  - [ ] Modifier `extraction_api.py` pour sauvegarder les images brutes (`extracted-raw`) avec la nomenclature `E{Ep}_P{Page}-I{Img}_extracted-raw_v0001.ext`.
+  - [ ] Modifier `extraction_api.py` pour générer des images PNG blanches comme placeholders `AI-concept`.
+  - [ ] Assurer que les placeholders `AI-concept` suivent la nomenclature `E{Ep}_SQ0010-{PlanIncr10}_AI-concept_v0001.ext`.
+  - [ ] Documenter la stratégie dans `log-projet.md` et `rules.md`.

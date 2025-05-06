@@ -16,8 +16,8 @@
 - Utiliser des analogies pour clarifier les concepts complexes
 
 **4. Produire des livrables structurés**  
-- Nomenclature standardisée : `001-architecture-[slug].md`, etc.
-- Numérotation 0-padded sur 3 chiffres
+- Nomenclature standardisée : `E{episode}_SQ{sequence}-{shot}_{task}_v{version}.{extension}`
+- Exemple cible : `E202_SQ0010-0010_AI-concept_v0001.jpg`
 
 **5. Itérer et valider**  
 - Demander des retours précis après chaque proposition
@@ -147,3 +147,39 @@ compute:
 - Effectuer des tests de non-régression après chaque modification
 - Gérer les erreurs et exceptions de manière robuste (logging, fallbacks)
 - S'assurer que les composants frontend et backend restent synchronisés
+
+### Nomenclature des Fichiers
+
+La nomenclature standardisée est : `E{episode}_SQ{sequence}-{shot}_{task}_v{version}.{extension}`
+Exemple cible : `E202_SQ0010-0010_AI-concept_v0001.jpg`
+
+**Détails des Composants :**
+-   `E{episode}`: Identifiant de l'épisode (ex: `E202`). Fourni par l'utilisateur.
+-   `SQ{sequence}`: Identifiant de séquence (ex: `SQ0010`, `SQ0020`).
+    -   Une séquence regroupe des plans consécutifs de **même style visuel**.
+    -   Un changement de style initie une nouvelle séquence.
+    -   Numérotation par incréments de 10 (0010, 0020, ...).
+    -   Non lié au numéro de page du PDF.
+-   `{shot}`: Identifiant du plan au sein d'une séquence (ex: `0010`, `0020`).
+    -   Numérotation par incréments de 10 pour chaque image/plan dans la séquence.
+    -   Non lié à l'index de l'image sur une page PDF.
+-   `{task}`: Tâche effectuée (ex: `AI-concept`, `animation`, `extracted-raw`).
+-   `_v{version}`: Version du fichier (ex: `_v0001`). 'v' minuscule, 4 chiffres.
+-   `.{extension}`: Extension du fichier (ex: `.png`, `.jpg`).
+
+**Application Spécifique (Phase Initiale d'Extraction via `extraction_api.py/upload_storyboard_v3`) :**
+
+1.  **Fichiers Bruts Extraits (`task: extracted-raw`)**
+    *   Ces fichiers sont la matière première et ne sont pas directement livrés au réalisateur sous cette forme pour validation de style.
+    *   **Format :** `E{ID_Episode}_P{NumPage4digits}-I{IndexImagePage4digits}_extracted-raw_v0001.{ext}`
+        *   `P{NumPage4digits}`: Numéro de page du PDF (ex: `P0001` pour page 1).
+        *   `I{IndexImagePage4digits}`: Index de l'image sur la page (ex: `I0001` pour 1ère image/page).
+    *   **Exemple :** `E202_P0001-I0001_extracted-raw_v0001.png`
+
+2.  **Fichiers Placeholders pour Test Nomenclature (`task: AI-concept`)**
+    *   Générés pour simuler la sortie destinée au réalisateur et tester la nomenclature.
+    *   Le contenu est une image PNG blanche (taille indicative : 100x100 pixels).
+    *   **Format :** `E{ID_Episode}_SQ0010-{PlanNum4digits}_AI-concept_v0001.{ext}`
+        *   `SQ0010`: Séquence par défaut utilisée pour *tous* les placeholders générés lors d'un même upload initial. La segmentation réelle par style viendra plus tard.
+        *   `{PlanNum4digits}`: S'incrémente de 10 pour *chaque image distincte extraite du PDF*, en commençant par `0010` (donc 0010, 0020, 0030, ... pour l'ensemble des images du PDF).
+    *   **Exemple (pour la 3ème image extraite d'un PDF pour E202) :** `E202_SQ0010-0030_AI-concept_v0001.png`

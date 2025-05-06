@@ -46,7 +46,7 @@ Transformer des storyboards en séquences visuelles stylisées par IA, en respec
 ## Paramètres techniques
 - Résolution: 1920x1080 (16:9)
 - Styles prédéfinis:
-  - "declic" (Ombres chinoises)
+  - "declic" (Style ombres chinoises)" (Ombres chinoises)
   - "labo" (Style laboratoire scientifique)
   - "expressionniste" (Style artistique)
 - Modèles: SD15, SDXL, SD3 selon disponibilité
@@ -91,8 +91,6 @@ globs: ["backend/**/*.py", "workflows/**/*.json"]
 ## Intégration ComfyUI
 - Créer des workflows JSON prédéfinis pour les styles:
   - "Ombres chinoises" (silhouettes noires)
-  - "Laboratoire" (style scientifique)
-  - "Expressionniste" (style artistique)
 - Utiliser ControlNet (Depth+Edge) pour respecter la composition
 - Adapter les workflows pour lire/écrire dans la nomenclature du projet
 - Utiliser l'API WebSocket de ComfyUI pour les générations

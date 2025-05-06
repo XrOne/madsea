@@ -28,10 +28,17 @@ def get_projects():
 def create_project():
     data = load_projects()
     body = request.json
+    # Création du projet avec métadonnées complètes pour la nomenclature
     new_proj = {
         "id": body.get('id'),
         "name": body.get('name'),
-        "episodes": []
+        "type": body.get('type'),
+        "duration": body.get('duration'),
+        "season": body.get('season'),
+        "episode": body.get('episode'),
+        "title": body.get('title'),
+        "nomenclature": body.get('nomenclature'),
+        "episodes": body.get('episodes', [])
     }
     data["projects"].append(new_proj)
     save_projects(data)
