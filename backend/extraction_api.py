@@ -18,6 +18,7 @@ import time
 import shutil
 import tempfile
 import logging
+import zipfile
 
 # Configuration du chemin vers l'exécutable Tesseract (à ajuster selon l'installation)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -28,20 +29,116 @@ ALLOWED_EXTENSIONS = {'pdf', 'zip', 'png', 'jpg', 'jpeg'}
 PROJECTS_BASE_PATH = 'projects' # Dossier racine pour tous les projets
 NOMENCLATURE_TEST_OUTPUT_BASE = Path("i:/Madsea/outputs/nomenclature_test")
 
-extraction_bp = Blueprint('extraction_bp', __name__)
+# Configuration du logger
+logging.basicConfig(level=logging.DEBUG)
 
 def allowed_file(filename):
     """Vérifie si l'extension du fichier est autorisée."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@extraction_bp.route('/api/v1/upload_storyboard_v3', methods=['POST'])
+def _process_pdf_advanced(pdf_temp_path, project_id, episode_id, output_path, original_filename):
+    """
+    Processes a PDF file to extract images and text from each page.
+
+    Args:
+        pdf_temp_path (str): Temporary path to the uploaded PDF file.
+        project_id (str): The ID of the project.
+        episode_id (str): The ID of the episode.
+        output_path (str): The directory path to save extracted images.
+        original_filename (str): The original name of the PDF file.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary contains:
+              {'panel_id': str, 'image_path': str, 'text': str}
+              Returns an empty list if an error occurs or no data is extracted.
+    """
+    extracted_data = []
+    try:
+        # Ensure output directory exists
+        os.makedirs(output_path, exist_ok=True)
+
+        doc = fitz.open(pdf_temp_path)
+        current_app.logger.info(f"Processing PDF: {original_filename} with {len(doc)} pages.")
+
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            panel_id_base = f"E{episode_id}_SQ{page_num + 1:04d}"
+
+            # 1. Extract images
+            images = page.get_images(full=True)
+            current_app.logger.info(f"Page {page_num + 1}: Found {len(images)} images.")
+
+            page_text = page.get_text("text")
+            if not page_text.strip(): # If no direct text, try OCR on the whole page
+                current_app.logger.info(f"Page {page_num + 1}: No direct text found, attempting OCR on page render.")
+                try:
+                    pix = page.get_pixmap(dpi=300)
+                    img_bytes = pix.tobytes("png")
+                    pil_image = Image.open(io.BytesIO(img_bytes))
+                    page_text = pytesseract.image_to_string(pil_image, lang='fra') # Assuming French, configure as needed
+                    current_app.logger.info(f"Page {page_num + 1}: OCR extracted text length: {len(page_text)}")
+                except Exception as e_ocr:
+                    current_app.logger.error(f"Error during OCR for page {page_num + 1}: {e_ocr}")
+                    page_text = ""
+
+            if not images:
+                # If no images found, consider the whole page as a panel and save its render
+                # This is a common case for storyboards where each page is one panel image
+                current_app.logger.info(f"Page {page_num + 1}: No embedded images found. Saving render of the page as an image.")
+                img_filename = f"{panel_id_base}_PNL001_extracted_image_v001.png"
+                img_save_path = os.path.join(output_path, img_filename)
+                try:
+                    pix = page.get_pixmap(dpi=300) # Higher DPI for better quality
+                    pix.save(img_save_path)
+                    extracted_data.append({
+                        'panel_id': f"{panel_id_base}_PNL001",
+                        'image_path': img_save_path,
+                        'text': page_text.strip()
+                    })
+                    current_app.logger.info(f"Saved page render: {img_save_path}")
+                except Exception as e_render_save:
+                    current_app.logger.error(f"Could not save page render for page {page_num + 1}: {e_render_save}")
+            else:
+                for img_idx, img_info in enumerate(images):
+                    xref = img_info[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image["image"]
+                    image_ext = base_image["ext"]
+                    
+                    img_filename = f"{panel_id_base}_IMG{img_idx + 1:03d}_extracted_image_v001.{image_ext}"
+                    img_save_path = os.path.join(output_path, img_filename)
+                    
+                    with open(img_save_path, "wb") as img_file:
+                        img_file.write(image_bytes)
+                    
+                    extracted_data.append({
+                        'panel_id': f"{panel_id_base}_IMG{img_idx + 1:03d}",
+                        'image_path': img_save_path,
+                        'text': page_text.strip() # Text is associated with the page, not individual images
+                    })
+                    current_app.logger.info(f"Saved extracted image: {img_save_path}")
+
+        doc.close()
+        current_app.logger.info(f"Successfully processed PDF. Extracted {len(extracted_data)} panels/images.")
+
+    except Exception as e:
+        current_app.logger.error(f"Error processing PDF {original_filename}: {e}")
+        # import traceback
+        # current_app.logger.error(traceback.format_exc())
+        return []  # Return empty list on error
+
+    return extracted_data
+
+extraction_bp = Blueprint('extraction_bp', __name__)
+
+@extraction_bp.route('/upload_storyboard', methods=['POST'])
 def upload_storyboard_v3():
     """Endpoint pour uploader un storyboard PDF (v3), extrait images et textes.
     Utilise _process_pdf_advanced et sauvegarde les sorties dans NOMENCLATURE_TEST_OUTPUT_BASE.
     Crée des placeholders AI-concept.
     """
-    current_app.logger.info(f"Entrée dans /api/v1/upload_storyboard_v3")
+    current_app.logger.info(f"Entrée dans /upload_storyboard")
     if 'storyboard_file' not in request.files:
         current_app.logger.error("Aucun fichier 'storyboard_file' dans la requête v3")
         return jsonify({'error': 'Aucun fichier storyboard_file trouvé'}), 400
@@ -101,12 +198,12 @@ def upload_storyboard_v3():
         current_app.logger.error(f"Échec du traitement avancé du PDF pour {filename}. extracted_data est None.")
         return jsonify({'error': 'Échec du traitement avancé du PDF (extracted_data is None). Vérifiez les logs serveur.'}), 500
     
-    current_app.logger.info(f"Traitement avancé terminé pour {filename}. Nombre d'images extraites (raw): {len(extracted_data.get('images', []))}")
+    current_app.logger.info(f"Traitement avancé terminé pour {filename}. Nombre d'images extraites (raw): {len(extracted_data)}")
 
     # Création des placeholders AI-concept
     ai_concept_images_info_list = [] # Initialiser ici pour toujours l'avoir
-    if "images" in extracted_data and extracted_data["images"]:
-        raw_images_info_list = extracted_data["images"]
+    if extracted_data:
+        raw_images_info_list = extracted_data
         
         ai_concept_task_str = "AI-concept"
         ai_concept_output_dir = NOMENCLATURE_TEST_OUTPUT_BASE / episode_id / ai_concept_task_str
@@ -152,7 +249,7 @@ def upload_storyboard_v3():
         "ai_concept_base": str(NOMENCLATURE_TEST_OUTPUT_BASE / episode_id / "AI-concept")
     }
 
-    current_app.logger.info(f"Réponse JSON pour /api/v1/upload_storyboard_v3: {extracted_data}")
+    current_app.logger.info(f"Réponse JSON pour /upload_storyboard: {extracted_data}")
     return jsonify(extracted_data), 200
 
 # ... Rest of the file remains the same ...

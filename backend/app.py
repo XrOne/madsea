@@ -37,6 +37,11 @@ app.logger.setLevel(logging.DEBUG)
 for handler in app.logger.handlers:
     handler.setLevel(logging.DEBUG)
 
+# Route de test simple pour diagnostiquer les problèmes d'accès
+@app.route('/test', methods=['GET'])
+def test():
+    return jsonify({"message": "L'API fonctionne!"})
+
 # --- Importation et Enregistrement des Blueprints (Corrigé) ---
 try:
     from projects_api import project_bp

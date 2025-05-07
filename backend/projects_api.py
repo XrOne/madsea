@@ -38,6 +38,7 @@ def create_project():
         "episode": body.get('episode'),
         "title": body.get('title'),
         "nomenclature": body.get('nomenclature'),
+        "code": body.get('code'),
         "episodes": body.get('episodes', [])
     }
     data["projects"].append(new_proj)
