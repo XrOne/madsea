@@ -1,22 +1,24 @@
-# log-projet.md
+# Journal de Bord - Projet Madsea
 
-## Journal de bord Madsea – Suivi des décisions clés
+## 07/05/2025 - Structure du projet et configuration
 
-### 2025-05-06
-- **Décision Nomenclature Placeholders :**
-  - Pour les tests d'extraction et afin de fournir au réalisateur une structure de fichiers conforme, l'endpoint `upload_storyboard_v3` dans `extraction_api.py` va être modifié.
-  - **Fichiers `extracted-raw` :** Nommés `E{ID_Episode}_P{NumPage4digits}-I{IndexImagePage4digits}_extracted-raw_v0001.{ext}`. (Ex: `E202_P0001-I0001_extracted-raw_v0001.png`).
-  - **Placeholders `AI-concept` :** Seront des images PNG blanches. Nommés `E{ID_Episode}_SQ0010-{PlanNum4digits}_AI-concept_v0001.{ext}`.
-    - `SQ0010` est la séquence par défaut pour ces placeholders initiaux.
-    - `{PlanNum4digits}` s'incrémente de 10 pour chaque image extraite du PDF (0010, 0020, ...).
-    - (Ex: `E202_SQ0010-0010_AI-concept_v0001.png`).
-  - Cette stratégie permet de valider la nomenclature finale des `AI-concept` avec des fichiers temporaires. La véritable assignation des SQ/Plan basée sur les styles se fera plus tard.
+### Structure des dossiers
+- Clarification importante sur la structure du frontend:
+  - Le frontend principal est situé dans le dossier `front madsea/` (avec un espace)
+  - Il s'agit d'une implémentation HTML DeepSite qui est active et fonctionnelle avec les fichiers suivants:
+    - `index.html` : Page principale
+    - `preview_selection_restylage.html` et `preview_selection_restylage_auto.html` : Pages de prévisualisation
+    - `validation_button.js` : Script JavaScript pour validation
+  - Le dossier `frontend/` contient une implémentation React/Vite qui est actuellement désactivée
+  - DeepSite est le service frontend actif, tandis que React/Vite est désactivé pour le moment
 
-### 2025-04-26
-- **Décision** : Priorité à la finalisation du flux extraction PDF → affichage scènes (UX Deepsite, backend extraction PyMuPDF).
-- **Tâche reportée** : Intégration API OpenAI/Midjourney (clé API, sélection moteur IA, fallback local/cloud, UX sécurisée) – à réaliser après le flux extraction/affichage.
-- **Action** : Ajout des exigences OpenAI/Midjourney dans le cahier des charges (`003-todo-implementation.md`).
-- **Note** : Schéma d’architecture, endpoints et UX pour l’intégration API IA à documenter dans une prochaine itération.
+### Services actifs
+- Backend Flask : Disponible sur http://localhost:5000
+  - Fournit les API d'extraction et de gestion des projets
+  - Routes principales : `/test`, `/extract`, endpoints du projet
+- Frontend DeepSite (HTML/JS simple) : actif et fonctionnel dans `front madsea/`
 
-### Historique antérieur
-- (À compléter rétroactivement si besoin)
+### Prochaines étapes
+- Tests d'extraction PDF → ComfyUI → Nomenclature standardisée
+- Vérification du respect de la convention : `E{episode}_SQ{sequence}-{plan}_{task}_v{version}.{ext}`
+- Documentation de l'intégration ComfyUI avec les modèles et LoRA

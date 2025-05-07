@@ -1,11 +1,25 @@
-# Environnements virtuels
-.venv/
-env/
-venv/
+# Environnements virtuels - modifications pour corriger le problème de tracking
+# Exclure tous les fichiers et dossiers à l'intérieur de venv, peu importe leur profondeur
+venv/**
+.venv/**
+env/**
+# Exclure explicitement les environnements virtuels par leur chemin absolu (comme vu dans vos captures d'écran)
+**/venv/**
+**/.venv/**
+**/env/**
 
 # Python cache
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs/
+*.egg-info/
+dist/
+build/
+develop-eggs/
 
 # Sorties générées et temporaires
 outputs/
@@ -31,3 +45,15 @@ projects/*/outputs/
 
 # Node/JS (si jamais)
 node_modules/
+
+# Ignorer les fichiers modèles volumineux
+*.safetensors
+*.pt
+*.ckpt
+*.bin
+
+# Mais conserver la structure des dossiers - ATTENTION cette règle peut poser problème
+# Modifié pour être plus spécifique
+!ComfyUI/*/
+!ComfyUI/*/*/
+!ComfyUI/*/*/*/
