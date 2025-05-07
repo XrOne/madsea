@@ -1,16 +1,3 @@
-# Ignore uploaded images and extracted storyboard assets
-/uploads/
-uploads/
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
-*.pdf
-*.zip
-ComfyUI/
-models/
-!uploads/.gitkeep
 # Environnements virtuels
 .venv/
 env/
@@ -20,7 +7,7 @@ venv/
 __pycache__/
 *.pyc
 
-# Sorties générées
+# Sorties générées et temporaires
 outputs/
 cache/
 backups/
@@ -34,10 +21,13 @@ temp/
 .DS_Store
 Thumbs.db
 
-# Données utilisateurs
+# Données utilisateurs et uploads
 uploads/
 *.sqlite3
 
-# Fichiers spécifiques Madsea
+# Projets Madsea : uploads/outputs internes
 projects/*/uploads/
 projects/*/outputs/
+
+# Node/JS (si jamais)
+node_modules/
