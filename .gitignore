@@ -11,3 +11,33 @@ uploads/
 ComfyUI/
 models/
 !uploads/.gitkeep
+# Environnements virtuels
+.venv/
+env/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Sorties générées
+outputs/
+cache/
+backups/
+temp/
+*.log
+*.tmp
+
+# Fichiers système/IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Données utilisateurs
+uploads/
+*.sqlite3
+
+# Fichiers spécifiques Madsea
+projects/*/uploads/
+projects/*/outputs/
