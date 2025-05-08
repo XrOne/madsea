@@ -1,101 +1,110 @@
-# Rapport d'Analyse - Structure du Projet Madsea
+# Rapport de Structure du Projet Madsea
 
-## 1. Vue d'ensemble
+## Présentation générale
 
-Le projet Madsea est une application permettant de transformer des storyboards en séquences visuelles stylisées via l'IA, en respectant la composition et permettant différents styles visuels. L'organisation du projet suit une architecture modulaire avec plusieurs composants clés.
+Madsea est une application conçue pour transformer des storyboards en séquences visuelles stylisées par IA, en respectant la composition originale et en permettant différents styles visuels, principalement le style "Ombres Chinoises" pour la série "Déclic".
 
-## 2. Structure des dossiers principaux
+## Architecture globale
 
-### Racine du projet
-- `.git`, `.gitignore` : Configuration Git pour le versionnage
-- `.venv` : Environnement virtuel Python
-- `main.py` et `startup.py` : Points d'entrée de l'application
+L'application se compose de trois composants principaux :
 
-### Composants principaux
-- `backend/` : API Flask pour le traitement des données et l'extraction
-- `front madsea/` : Frontend HTML/JS actif (DeepSite)
-- `frontend/` : Frontend React/Vite (actuellement désactivé)
-- `ComfyUI/` : Intégration avec ComfyUI pour la génération d'images
-- `scripts/` : Scripts d'automatisation et d'installation
+1. **Backend Flask** : Services modulaires pour l'extraction, la transformation et la gestion des fichiers
+2. **Frontend** : Interface utilisateur simple et efficace
+3. **Intégration ComfyUI** : Moteur de génération d'images stylisées
 
-### Ressources et données
-- `models/` : Modèles IA pour la génération
-- `outputs/` : Images générées et résultats
-- `docs/` : Documentation du projet
-- `pdf storyboard/` : Exemples et fichiers de storyboard
+## Structure des dossiers
 
-## 3. Analyse détaillée des composants
+```
+i:\Madsea\
+├── backend\                      # Backend Flask
+│   ├── app.py                    # Point d'entrée principal
+│   ├── extraction_api.py         # API d'extraction PDF
+│   ├── projects_api.py           # Gestion des projets
+│   ├── comfyui_api.py            # API ComfyUI
+│   └── comfyui_bridge.py         # Communication avec ComfyUI
+├── ComfyUI\                      # Installation ComfyUI
+│   ├── models\                   # Modèles IA
+│   └── workflows\                # Templates de workflow
+│       └── Windsurf_Template.json # Workflow pour Ombres Chinoises
+├── declics\                      # Références et exemples
+│   └── ombre chinoise\           # Style Ombres Chinoises
+├── docs\                         # Documentation
+│   ├── 004-definition-sequences-plans-styles.md
+│   ├── GUIDE_COMFYUI_MADSEA.md
+│   └── RAPPORT_STRUCTURE_PROJET.md
+├── frontend\                     # Frontend React/Vite (en pause)
+│   └── index.html
+├── front madsea\                 # Frontend HTML actif
+│   └── deepsitefront.html        # Interface principale
+├── parsing\                      # Modules d'extraction
+├── projects\                     # Données des projets
+└── scripts\                      # Scripts utilitaires
+    └── install_comfyui_models.ps1 # Installation des modèles
+```
 
-### 3.1 Backend (Flask)
-- **Structure** : Architecture Flask avec blueprints (API modulaire)
-- **Modules principaux** :
-  - `app.py` : Application principale Flask
-  - `extraction_api.py` : Gestion de l'extraction des images depuis PDF
-  - `projects_api.py` : Gestion des projets et méta-données
-  - `services/` : Services métier (extraction, gestion de fichiers)
+## Composants principaux
 
-- **Configuration** :
-  - Port : 5000
-  - CORS activé pour les requêtes cross-origin
-  - Dossier d'upload configuré
+### 1. Backend Flask
 
-### 3.2 Frontend
-#### 3.2.1 Front Madsea (DeepSite) - ACTIF
-- **Type** : Interface HTML/JS simple
-- **Fichiers clés** :
-  - `index.html` : Page principale
-  - `preview_selection_restylage.html` : Prévisualisation du restylage
-  - `validation_button.js` : Script de validation
+Le backend est composé de plusieurs modules :
 
-#### 3.2.2 Frontend React/Vite - DÉSACTIVÉ
-- **Type** : Application React moderne avec Vite
-- **Structure** :
-  - `package.json` : Configuration npm et scripts
-  - `src/` : Code source React
-  - `public/` : Assets statiques
+- **app.py** : Application Flask principale, point d'entrée qui enregistre tous les blueprints
+- **extraction_api.py** : Extraction et OCR des PDFs de storyboard
+- **projects_api.py** : Gestion des projets, épisodes et séquences
+- **comfyui_api.py** : Endpoint `/api/comfyui/process_plans` pour traiter les plans avec ComfyUI
+- **comfyui_bridge.py** : Module de communication avec l'API ComfyUI
 
-### 3.3 ComfyUI
-- **Intégration** :
-  - `workflows/` : Workflows préconfigurés (dont Windsurf_Template.json)
-  - `models/` : Stockage des modèles IA
-- **Fichiers clés** :
-  - `main.py` : Point d'entrée de ComfyUI
-  - `Windsurf_ComfyUI_Workflow_Template.json` : Template pour "ombre chinoise"
+Le backend implémente une API RESTful JSON pour toutes les opérations.
 
-### 3.4 Scripts
-- `install_comfyui_models.ps1` : Installation automatisée des modèles
-- `start_servers.sh` : Démarrage des serveurs (backend et ComfyUI)
-- Autres scripts d'installation et de nettoyage
+### 2. Frontend
 
-## 4. Fichiers de configuration
-- `requirements.txt` : Dépendances Python
-- `.gitignore` : Configuration des exclusions Git
-- `.windsurfrules` : Règles et configuration du projet
+Deux implémentations frontend existent :
 
-## 5. Documentation
-- `docs/GUIDE_COMFYUI_MADSEA.md` : Guide d'utilisation de ComfyUI
-- `docs/MODELES_COMFYUI_URLS.md` : Liens vers les modèles à télécharger
-- `README.md` et autres fichiers d'information
+- **Frontend HTML simple** (`front madsea/deepsitefront.html`) : Interface active et fonctionnelle
+- **Frontend React/Vite** (`frontend/index.html`) : Version plus avancée, actuellement en pause
 
-## 6. Workflow fonctionnel
+L'interface permet :
+- L'upload de PDFs
+- La visualisation des plans extraits
+- La modification des numéros de séquence
+- La sélection des plans à traiter
+- L'envoi vers ComfyUI pour génération
 
-Le workflow de Madsea fonctionne ainsi :
-1. **Upload** : L'utilisateur charge un storyboard PDF via l'interface DeepSite
-2. **Extraction** : Le backend extrait les images du PDF
-3. **Traitement** : Les images sont envoyées à ComfyUI pour application du style
-4. **Stockage** : Les images générées sont nommées selon la convention `E{episode}_SQ{sequence}-{plan}_{task}_v{version}.{ext}`
-5. **Visualisation** : L'utilisateur peut prévisualiser et valider les résultats
+### 3. Intégration ComfyUI
 
-## 7. État actuel
+L'intégration avec ComfyUI se fait via :
 
-- Backend Flask fonctionnel sur http://localhost:5000
-- Frontend DeepSite actif via `front madsea/index.html`
-- ComfyUI intégré mais nécessite l'installation des modèles
-- Nomenclature standardisée implémentée
+- **comfyui_bridge.py** : Module qui gère la communication avec l'API ComfyUI
+- **Windsurf_Template.json** : Workflow optimisé pour le style "Ombres Chinoises"
+- **Models** : SDE-LCM 3.2, ControlNet UHD v2.5, ShadowCraft XL LoRA, IP-Adapter
 
-## 8. Prochaines étapes recommandées
+Cette intégration permet de transformer automatiquement les plans extraits en respectant le style "Ombres Chinoises" tout en préservant la composition originale.
 
-1. **Tester l'extraction PDF** vers ComfyUI
-2. **Vérifier la nomenclature** des fichiers générés
-3. **Installer tous les modèles** nécessaires via `install_comfyui_models.ps1`
-4. **Explorer le dossier `styles/`** pour les configurations de style
+## Workflow utilisateur
+
+1. Création d'un projet (avec saison/épisode)
+2. Upload d'un PDF de storyboard
+3. Visualisation des plans extraits
+4. Modification des numéros de séquence si nécessaire
+5. Sélection des plans à traiter
+6. Envoi vers ComfyUI
+7. Validation des résultats
+
+## État du projet
+
+- **✅ Fonctionnel** : Backend Flask, extraction PDF, frontend simple, OCR
+- **✅ Implémenté** : Intégration ComfyUI, pipeline de génération
+- **🔄 En cours** : Installation des modèles spécifiques, optimisation du workflow
+- **⏳ Plannifié** : Interface de validation, export de séquences
+
+## Objectif actuel
+
+Production de 70 plans en style "Ombres Chinoises" sur 10 jours pour la série "Déclic".
+
+## Documentation
+
+La documentation du projet est disponible dans le dossier `docs/` et comprend :
+- Guides d'utilisation
+- Documentation technique
+- Spécifications des styles visuels
+- Définitions des concepts (plans, séquences)

@@ -1,39 +1,71 @@
-# Définition des Séquences, Plans et Rôle des Styles Visuels dans Madsea
+# Définition des Séquences, Plans et Styles dans Madsea
 
-Ce document clarifie la terminologie et le workflow liés aux séquences et aux plans dans le projet Madsea, en particulier concernant l'influence des styles visuels.
+## Concepts fondamentaux
 
-## 1. Plan
+### Plan
 
-*   Un **Plan** correspond à une unique image extraite d'un fichier PDF de storyboard. Chaque image individuelle du storyboard est considérée comme un plan distinct.
+Un **plan** est une image unique extraite d'un PDF de storyboard. C'est l'unité élémentaire visuelle du projet, représentant une composition spécifique à transformer en style "Ombres Chinoises" ou autre.
 
-## 2. Séquence
+Chaque plan est identifié par un numéro incrémental (généralement par pas de 10) au sein d'une séquence, par exemple : `0010`, `0020`, etc.
 
-*   Une **Séquence** est constituée d'un ensemble de plusieurs plans successifs.
-*   La caractéristique principale qui définit et délimite une séquence est la **cohérence de son style visuel**.
+### Séquence
 
-## 3. Styles Visuels et Délimitation des Séquences (Exemple : Série "Déclic")
+Une **séquence** est un ensemble de plans successifs définis par une cohérence de style visuel. Pour la série "Déclic", les styles principaux sont :
 
-Pour la série "Déclic", deux styles visuels majeurs sont utilisés :
+1. **Ombres Chinoises** : Style silhouette noir sur fond contrasté, généré par IA
+2. **Style Labo** : Rendu 3D pour les scènes se déroulant en laboratoire
 
-*   **Style "Ombres Chinoises"**:
-    *   Généré par Intelligence Artificielle (IA) via ComfyUI, en utilisant des techniques comme les LoRA.
-    *   C'est le style principal sur lequel se concentre l'outil Madsea pour la génération.
-*   **Style "Labo"**:
-    *   Créé par une équipe 3D de manière traditionnelle.
-    *   Ces séquences ne sont pas générées par l'outil Madsea IA.
+Une séquence est identifiée par un préfixe "SQ" suivi d'un numéro à 4 chiffres, par exemple : `SQ0010`.
 
-Une séquence dans un style donné (par exemple, "Ombres Chinoises") continue tant que les plans consécutifs partagent ce style. La séquence s'achève dès qu'un changement de style intervient. Ce changement marque le début d'une nouvelle séquence (qui pourrait être "Style Labo", ou une nouvelle séquence "Ombres Chinoises" après un interlude dans un autre style).
+Important : Un changement de style marque le début d'une nouvelle séquence.
 
-## 4. Workflow Utilisateur pour la Sélection et l'Identification des Séquences
+### Style visuel
 
-*   **Sélection des Plans pour Séquences IA**: L'utilisateur (réalisateur, storyboarder) sélectionnera manuellement les plans extraits du PDF qui doivent composer une séquence à générer dans un style IA (par exemple, "Ombres Chinoises"). Toutes les images d'un PDF ne seront pas nécessairement utilisées pour une séquence IA.
-*   **Identification des Séquences**: Pour éviter toute ambiguïté et perte d'information, l'utilisateur pourra, si nécessaire, indiquer le numéro de la séquence (par exemple, `SQ0010`, `SQ0020`) directement dans les textes ou annotations extraits associés aux plans lors de la phase de préparation ou de sélection. Cela permettra au système de regrouper correctement les plans, même s'ils ne sont pas tous traités par l'IA.
+Le **style visuel** détermine l'apparence finale des plans générés. Pour "Ombres Chinoises", ce style se caractérise par :
 
-## 5. Implication pour la Nomenclature
+- Silhouettes noires ou très sombres
+- Contraste élevé
+- Détails limités mais suffisants pour reconnaître les personnages et objets
+- Ambiance cinématographique
+- Éclairage dramatique avec parfois des effets de contre-jour
 
-La nomenclature `E{épisode}_SQ{séquence}-{plan}_{tâche}_v{version}.{ext}` reste valide.
-*   `SQ{séquence}`: Sera déterminé par l'utilisateur en fonction de ces groupements par style.
-*   `{plan}`: Correspondra toujours à une image individuelle du storyboard.
-*   `{tâche}`: Indiquera le type de traitement (ex: `AI-concept-ombre-chinoise`, `extracted-raw`).
+## Workflow Utilisateur
 
-Cette approche permet une flexibilité où le contenu d'un seul PDF peut potentiellement être divisé en plusieurs séquences distinctes basées sur le style, ou à l'inverse, où seule une partie des plans d'un PDF est utilisée pour une séquence IA spécifique.
+1. **Extraction du PDF** : L'utilisateur upload un PDF de storyboard qui est automatiquement décomposé en plans individuels.
+
+2. **Attribution des numéros de séquence** : L'utilisateur peut spécifier le numéro de séquence (SQxxxx) pour chaque plan extrait. Ceci est particulièrement important car toutes les images d'un PDF ne seront pas nécessairement utilisées dans une séquence "Ombres Chinoises".
+
+3. **Sélection des plans** : L'utilisateur sélectionne les plans qui doivent être transformés en style "Ombres Chinoises".
+
+4. **Génération par IA** : Les plans sélectionnés sont envoyés à ComfyUI qui applique le style "Ombres Chinoises" tout en préservant la composition originale.
+
+5. **Validation** : L'utilisateur valide ou rejette les plans générés, avec possibilité de régénérer si nécessaire.
+
+## Nomenclature des fichiers
+
+La nomenclature `E{saison_episode}_SQ{sequence}-{plan}_{tache}_v{version}.{extension}` est strictement appliquée à chaque étape :
+
+- **Pour les plans extraits** : `E202_SQ0010-0010_extracted-raw_v0001.png`
+- **Pour les plans générés** : `E202_SQ0010-0010_AI-concept_v0001.png`
+
+Cette nomenclature assure la traçabilité et l'organisation cohérente du projet, particulièrement important pour gérer les 70 plans prévus en 10 jours.
+
+## Style "Ombres Chinoises" - Spécifications techniques
+
+Le style "Ombres Chinoises" pour la série "Déclic" est généré à l'aide de :
+
+1. **Modèle de base** : SDE-LCM 3.2
+2. **ControlNet** : UHD v2.5 (Canny, Depth, Pose) pour préserver la composition
+3. **LoRA spécifique** : ShadowCraft XL v2.1 pour l'effet silhouette
+4. **IP-Adapter** : Utilisant des références du dossier `declics/ombre chinoise/`
+5. **Prompts optimisés** : Intégrant des mentions explicites du style cinématographique silhouette
+
+Ce workflow technique produit des images qui respectent fidèlement la composition du storyboard original tout en y appliquant l'esthétique "Ombres Chinoises" caractéristique de la série "Déclic".
+
+## Exemples visuels
+
+Le dossier `i:\Madsea\declics\ombre chinoise\` contient 65+ exemples du style recherché. Ces images servent à la fois de :
+
+1. Références pour les humains évaluant la qualité des générations
+2. Données d'apprentissage pour l'IP-Adapter
+3. Guide visuel pour ajuster les paramètres du workflow
