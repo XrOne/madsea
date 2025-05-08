@@ -46,12 +46,14 @@ def test():
 try:
     from projects_api import project_bp
     from extraction_api import extraction_bp
+    from comfyui_api import comfyui_bp
 
     print("[Backend] Enregistrement du blueprint 'project_bp'")
     app.register_blueprint(project_bp, url_prefix='/api')
-
     print("[Backend] Enregistrement du blueprint 'extraction_bp'")
     app.register_blueprint(extraction_bp, url_prefix='/api')
+    print("[Backend] Enregistrement du blueprint 'comfyui_bp'")
+    app.register_blueprint(comfyui_bp, url_prefix='/api')
 
 except ImportError as e:
     print(f"[Backend] ERREUR CRITIQUE: Impossible d'importer les blueprints: {e}")

@@ -183,3 +183,21 @@ Exemple cible : `E202_SQ0010-0010_AI-concept_v0001.jpg`
         *   `SQ0010`: Séquence par défaut utilisée pour *tous* les placeholders générés lors d'un même upload initial. La segmentation réelle par style viendra plus tard.
         *   `{PlanNum4digits}`: S'incrémente de 10 pour *chaque image distincte extraite du PDF*, en commençant par `0010` (donc 0010, 0020, 0030, ... pour l'ensemble des images du PDF).
     *   **Exemple (pour la 3ème image extraite d'un PDF pour E202) :** `E202_SQ0010-0030_AI-concept_v0001.png`
+
+## Définition des Séquences, Plans et Styles Visuels
+
+La compréhension précise des termes "plan" et "séquence" est cruciale pour le projet Madsea, notamment en lien avec les styles visuels.
+
+*   **Plan**: Un **Plan** correspond à une unique image extraite d'un fichier PDF de storyboard.
+*   **Séquence**: Une **Séquence** est un ensemble de plans successifs définis par une **cohérence de style visuel**.
+    *   Par exemple, dans la série "Déclic", une séquence "Ombres Chinoises" (générée par IA) comprend tous les plans consécutifs dans ce style. Un changement de style (par exemple, vers un style "Labo" fait en 3D) marque la fin de la séquence "Ombres Chinoises" et le début d'une nouvelle séquence.
+*   **Workflow Utilisateur**:
+    *   L'utilisateur sélectionnera les plans spécifiques d'un PDF qui composeront une séquence IA (ex: "Ombres Chinoises").
+    *   L'utilisateur pourra indiquer le numéro de séquence (`SQxxxx`) dans les textes extraits pour assurer une identification correcte, car toutes les images d'un PDF ne sont pas forcément utilisées.
+*   **Impact sur la Nomenclature**:
+    *   `E{épisode}_SQ{séquence}-{plan}_{tâche}_v{version}.{ext}`
+    *   `SQ{séquence}` est déterminé par ces groupements par style, identifiés par l'utilisateur.
+    *   `{plan}` est l'identifiant unique d'une image du storyboard.
+    *   `{tâche}` peut refléter le style (ex: `AI-concept-ombre-chinoise`).
+
+Pour plus de détails, se référer au document `docs/004-definition-sequences-plans-styles.md`.

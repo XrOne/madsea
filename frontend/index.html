@@ -199,9 +199,11 @@
             const selectEpisode = (episodeId) => {
                 const episode = activeProject?.episodes?.find(e => e.id === episodeId);
                 setActiveEpisode(episode);
-                setScenes(episode?.scenes || []);
+                setScenes(episode?.scenes || []); // Clear scenes if episode has no pre-loaded scenes
                 setSelectedScenes([]);
-                addNotification(`Épisode "${episode?.name}" sélectionné`, 'info');
+                if (episode) {
+                    addNotification(`Épisode "${episode.name}" sélectionné`, 'success');
+                }   
             };
 
             // Handle scene selection
@@ -387,110 +389,80 @@
                     addNotification('Aucun fichier sélectionné.', 'warning');
                     return;
                 }
-                
                 if (!activeProject || !activeEpisode) {
                     addNotification('Veuillez sélectionner un projet et un épisode actifs.', 'warning');
                     return;
                 }
 
                 const file = files[0];
-                // Vérification basique du type (peut être améliorée)
-                if (!file.type.startsWith('application/pdf')) { // Simplifié pour PDF pour l'instant
-                     addNotification('Seuls les fichiers PDF sont supportés pour le moment.', 'warning');
-                     return;
-                }
+                const formData = new FormData();
+                formData.append('file', file); // Key is 'file' as expected by backend
+                formData.append('project_id', activeProject.id);
+                formData.append('episode_id', activeEpisode.id);
+                // Ensure activeEpisode.number is in 'SQxxxx' format or provide a default
+                const sequenceNumberValue = activeEpisode.number && activeEpisode.number.startsWith('SQ') ? activeEpisode.number : 'SQ0010';
+                formData.append('sequence_number', sequenceNumberValue); 
 
                 setIsUploading(true);
-                setUploadProgress(0); // Peut être utilisé pour un indicateur visuel simple
-                setExtractionProgress(0);
-                addNotification('Téléchargement et extraction en cours...', 'info');
+                setUploadProgress(0); 
+                setExtractionProgress(0); 
 
-                const formData = new FormData();
-                formData.append('storyboard_file', file);
-                formData.append('project_id', activeProject.id); 
-                formData.append('episode_id', activeEpisode.id);
-                // Ajouter les options (si nécessaire, pour l'instant valeurs par défaut)
-                const options = {
-                    detectPanels: true,
-                    extractText: true,
-                    enhanceQuality: true, // Assurez-vous que le backend gère cela
-                    extractCaptions: true
-                };
-                formData.append('options', JSON.stringify(options));
+                // Simulate progress for UX
+                let currentUploadProgress = 0;
+                const uploadInterval = setInterval(() => {
+                    currentUploadProgress += 10;
+                    if (currentUploadProgress <= 100) {
+                        setUploadProgress(currentUploadProgress);
+                    }
+                    if (currentUploadProgress >= 100) clearInterval(uploadInterval);
+                }, 200);
 
                 try {
-                    const response = await fetch('http://localhost:5000/api/upload_storyboard', { // URL ABSOLUE CORRIGÉE
+                    const response = await fetch('http://localhost:5000/api/extraction/upload_storyboard', { 
                         method: 'POST',
                         body: formData,
                     });
 
-                    setUploadProgress(100); // Indique la fin de l'upload
+                    clearInterval(uploadInterval); 
+                    setUploadProgress(100);
 
                     if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({ error: 'Erreur inconnue du serveur' }));
+                        const errorData = await response.json();
                         throw new Error(errorData.error || `Erreur HTTP: ${response.status}`);
                     }
 
-                    const result = await response.json();
-                    setExtractionProgress(100); // Indique la fin de l'extraction (simplifié)
-                    addNotification(result.message || 'Extraction terminée avec succès!', 'success');
+                    const data = await response.json();
+                    addNotification(data.message || 'Upload et extraction terminés!', 'success');
 
-                    // --- Traitement des données réelles --- 
-                    if (result.extracted_data && result.extracted_data.pages) {
-                        // Tenter de mapper les données extraites au format attendu par le frontend
-                        const newScenes = [];
-                        let sceneCounter = 1;
-                        result.extracted_data.pages.forEach((page, pageIndex) => {
-                            // Essayer de regrouper par panel/image si possible
-                            // Ceci est une simplification, une logique plus robuste serait nécessaire
-                            page.images.forEach((img, imgIndex) => {
-                                const sceneText = page.texts.find(txt => { 
-                                    // Logique simple pour associer texte et image (à améliorer)
-                                    // Ici, on suppose qu'un texte proche est associé
-                                    const imgBox = img.bbox;
-                                    const txtBox = txt.bbox;
-                                    const overlap = Math.max(0, Math.min(imgBox[2], txtBox[2]) - Math.max(imgBox[0], txtBox[0])) *
-                                                    Math.max(0, Math.min(imgBox[3], txtBox[3]) - Math.max(imgBox[1], txtBox[1]));
-                                    const isClose = Math.abs(imgBox[3] - txtBox[1]) < 50; // Si le texte est juste en dessous
-                                    return isClose; // Simplification extrême
-                                });
-                                
-                                newScenes.push({
-                                    id: `scene_${Date.now()}_${pageIndex}_${imgIndex}`,
-                                    image_url: img.path, // Utiliser le chemin retourné par l'API
-                                    title: `Scène ${sceneCounter++}`,
-                                    location: `Page ${pageIndex + 1}`, // Placeholder
-                                    dialogue: sceneText ? sceneText.content.substring(0, 50) + '...' : 'Texte non trouvé', // Placeholder
-                                    indication: '', // Placeholder
-                                    type_plan: '', // Placeholder
-                                    description: '', // Placeholder
-                                    notes: '', // Placeholder
-                                    storyboard_text: sceneText ? sceneText.content : '' // Texte brut OCR
-                                });
-                            });
-                        });
-                        
-                        if (newScenes.length > 0) {
-                           setScenes(newScenes);
-                           // Mettre à jour aussi l'état global des projets/épisodes si nécessaire
-                           updateGlobalScenes(newScenes);
-                        } else {
-                            addNotification('Aucune scène détectée dans le storyboard.', 'warning');
-                            setScenes([]); // Vider les scènes précédentes
-                        }
+                    // Transform backend data (structured_data with 'pages') to flat list of plans for 'scenes' state
+                    if (data.pages && Array.isArray(data.pages)) {
+                        const allPlans = data.pages.flatMap(page =>
+                            page.images && Array.isArray(page.images) ? 
+                            page.images.map(imageInfo => ({
+                                ...imageInfo, // Includes plan_number, sequence_number, paths, filenames, episode_id
+                                id: `plan_${imageInfo.episode_id}_${imageInfo.sequence_number}_${imageInfo.plan_number}`.replace(/[^a-zA-Z0-9_\-]/g, '_'), // Unique ID, sanitized
+                                page_number: page.page_number,
+                                voice_off: page.voice_off || '',
+                                // Prepend backend URL to paths for display
+                                path: `http://localhost:5000${imageInfo.path}`,
+                                ai_concept_placeholder_path: `http://localhost:5000${imageInfo.ai_concept_placeholder_path}`
+                            })) : []
+                        );
+                        setScenes(allPlans);
                     } else {
-                        addNotification('Données extraites non trouvées ou invalides dans la réponse.', 'warning');
-                        setScenes([]); // Vider les scènes
+                        setScenes([]); // Set to empty if data is not as expected
+                        addNotification('Format de données inattendu reçu du serveur.', 'warning');
                     }
+                    
+                    setSelectedScenes([]); 
+                    setExtractionProgress(100); 
 
                 } catch (error) {
-                    console.error('Erreur lors de l\'upload/extraction:', error);
-                    addNotification(`Erreur: ${error.message}`, 'error');
-                    setScenes([]); // Vider en cas d'erreur
+                    console.error('Upload error:', error);
+                    addNotification(`Erreur d'upload: ${error.message}`, 'error');
+                    clearInterval(uploadInterval); 
                 } finally {
                     setIsUploading(false);
-                    setUploadProgress(0);
-                    setExtractionProgress(0);
                 }
             };
 
@@ -512,6 +484,15 @@
                      // Mettre à jour l'épisode actif directement si nécessaire
                      setActiveEpisode(prev => ({ ...prev, scenes: newScenes }));
                  }
+            };
+
+            const updateSceneData = (sceneId, updatedData) => {
+                setScenes(prevScenes =>
+                    prevScenes.map(scene =>
+                        scene.id === sceneId ? { ...scene, ...updatedData } : scene
+                    )
+                );
+                // addNotification(`Données de la scène mises à jour pour ${sceneId}.`, 'info'); // Optional: for debugging or user feedback
             };
 
             // Handle style generation
@@ -567,7 +548,9 @@
                 setSidebarOpen,
                 setShowNewProjectModal,
                 setShowTrash,
-                setNewProjectData
+                setNewProjectData,
+                updateSceneData, // <-- Ajout de la nouvelle fonction au contexte
+                updateGlobalScenes
             };
 
             return (
@@ -594,6 +577,7 @@
                                         ) : (
                                             <SceneList />
                                         )}
+                                        <PlanActions />
                                     </>
                                 )}
                             </main>
@@ -781,7 +765,7 @@
                                             </svg>
                                         ) : (
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                                             </svg>
                                         )}
                                     </button>
@@ -1000,7 +984,7 @@
                                     <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                     </svg>
-                                    <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun projet dans la corbeille</h3>
+                                    <h3 className="mt-2 text-lg font-medium text-gray-900">Aucun projet dans la corbeille</h3>
                                     <p className="mt-1 text-sm text-gray-500">Les projets que vous archivez apparaîtront ici.</p>
                                 </div>
                             ) : (
@@ -1382,7 +1366,7 @@
                                 <h3 className="mt-2 text-lg font-medium text-gray-900">
                                     Déposez votre storyboard ici
                                 </h3>
-                                <p className="mt-1 text-sm text-gray-500">
+                                <p className="mt-1 text-xs text-gray-500">
                                     Formats acceptés: PDF, ZIP ou images (JPG, PNG)
                                 </p>
                                 <div className="mt-6">
@@ -1432,51 +1416,97 @@
         function SceneGrid() {
             const { scenes, selectedScenes, toggleSceneSelection, addNotification } = useContext(AppContext);
             
+            if (!scenes || scenes.length === 0) {
+                return (
+                    <div className="text-center py-12">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <h3 className="mt-2 text-lg font-medium text-gray-900">Aucune scène à afficher</h3>
+                        <p className="mt-1 text-sm text-gray-500">Téléchargez un storyboard pour commencer.</p>
+                    </div>
+                );
+            }
+
             return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 p-4">
                     {scenes.map(scene => (
                         <div 
                             key={scene.id} 
-                            className={`scene-card bg-white rounded-lg shadow-sm overflow-hidden border-2 ${selectedScenes.includes(scene.id) ? 'border-blue-500' : 'border-transparent'} transition-all duration-150`}
+                            className={`bg-white rounded-lg shadow-md overflow-hidden transition-all duration-200 ease-in-out scene-card ${selectedScenes.includes(scene.id) ? 'ring-2 ring-blue-500 scale-105' : 'hover:shadow-xl'}`}
                         >
-                            <div className="relative">
-                                <div className="h-40 bg-gray-200 flex items-center justify-center">
-                                    <span className="text-gray-500">Prévisualisation</span>
-                                </div>
-                                <div className="absolute top-2 left-2">
+                            <div className="p-3">
+                                <div className="flex items-start justify-between mb-2">
+                                    <div className="flex-grow">
+                                        <h3 className="text-xs font-semibold text-gray-700 truncate" title={`Plan: ${scene.plan_number}`}>P: {scene.plan_number}</h3>
+                                        <div className="flex items-center mt-0.5">
+                                            <label htmlFor={`seq_no_${scene.id}`} className="text-xs text-gray-500 mr-1 whitespace-nowrap">SQ:</label>
+                                            <input 
+                                                type="text" 
+                                                id={`seq_no_${scene.id}`}
+                                                value={scene.sequence_number || 'SQ0000'} 
+                                                onChange={(e) => {
+                                                    const newSeq = e.target.value.toUpperCase();
+                                                    // Allow typing, validation happens onBlur or if format is clearly wrong
+                                                    updateSceneData(scene.id, { sequence_number: newSeq });
+                                                }}
+                                                onBlur={(e) => { 
+                                                    let finalSeq = e.target.value.toUpperCase();
+                                                    if (!finalSeq.startsWith("SQ")) {
+                                                        finalSeq = "SQ" + finalSeq.replace(/[^0-9]/g, ""); // Prepend SQ, keep only numbers
+                                                    }
+                                                    // Ensure SQ followed by 4 digits, padding with 0 if necessary
+                                                    const numbers = finalSeq.substring(2).replace(/[^0-9]/g, ""); // Get numbers after SQ
+                                                    finalSeq = "SQ" + numbers.padStart(4, '0').substring(0,4); // Pad to 4 digits, truncate if longer
+                                                    
+                                                    if (finalSeq !== scene.sequence_number) { // Update only if changed by validation
+                                                        updateSceneData(scene.id, { sequence_number: finalSeq });
+                                                    }
+                                                }}
+                                                className="text-xs text-gray-600 p-0.5 border border-gray-300 rounded-sm w-16 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                                placeholder="SQ0010"
+                                                title="Numéro de Séquence (ex: SQ0010)"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-gray-500 truncate mt-0.5" title={`Fichier: ${scene.filename}`}>F: {scene.filename}</p>
+                                        {scene.ai_concept_filename && 
+                                        <p className="text-xs text-gray-500 truncate mt-0.5" title={`Concept: ${scene.ai_concept_filename}`}>C: {scene.ai_concept_filename}</p>
+                                        }
+                                    </div>
                                     <input 
                                         type="checkbox" 
+                                        className="form-checkbox h-5 w-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300 ml-2 flex-shrink-0"
                                         checked={selectedScenes.includes(scene.id)}
                                         onChange={() => toggleSceneSelection(scene.id)}
-                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                        aria-label={`Sélectionner le plan ${scene.plan_number}`}
                                     />
                                 </div>
-                                <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                                    {scene.type_plan}
-                                </div>
-                            </div>
-                            
-                            <div className="p-3">
-                                <h3 className="text-sm font-medium text-gray-900 truncate">{scene.title}</h3>
-                                <div className="location-highlight p-2 mt-1 rounded text-xs">
-                                    {scene.location}
-                                </div>
-                                <div className="dialogue-box p-2 mt-1 rounded text-xs">
-                                    {scene.dialogue}
-                                </div>
-                                <div className="indication-box p-2 mt-1 rounded text-xs">
-                                    {scene.indication}
+
+                                <div className="aspect-w-16 aspect-h-9 bg-gray-200 mb-2 rounded overflow-hidden border border-gray-200">
+                                    <img 
+                                        src={scene.path} 
+                                        alt={`Extracted: ${scene.filename}`}
+                                        className="w-full h-full object-contain" 
+                                        onError={(e) => { e.target.onerror = null; e.target.src='https://via.placeholder.com/300x169/F3F4F6/9CA3AF?text=Image+Source+Introuvable'; addNotification(`Erreur chargement: ${scene.filename}`, 'error');}}
+                                        loading="lazy"
+                                    />
                                 </div>
                                 
-                                <div className="mt-3 flex justify-between items-center">
-                                    <button 
-                                        className="text-xs text-blue-600 hover:text-blue-800"
-                                        onClick={() => addNotification(`Édition de ${scene.title}`, 'info')}
-                                    >
-                                        Éditer
-                                    </button>
-                                    <span className="text-xs text-gray-400">v0001</span>
+                                <div className="aspect-w-16 aspect-h-9 bg-gray-100 mb-1 rounded overflow-hidden border border-gray-200">
+                                     <img 
+                                        src={scene.ai_concept_placeholder_path} 
+                                        alt={`AI Placeholder: ${scene.ai_concept_filename}`}
+                                        className="w-full h-full object-contain" 
+                                        onError={(e) => { e.target.onerror = null; e.target.src='https://via.placeholder.com/300x169/E5E7EB/9CA3AF?text=Placeholder+Introuvable'; addNotification(`Erreur chargement placeholder: ${scene.ai_concept_filename}`, 'error');}}
+                                        loading="lazy"
+                                    />
                                 </div>
+                                {scene.voice_off && scene.voice_off.trim() !== "" && (
+                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                        <p className="text-xs text-gray-600 font-medium mb-0.5">Voix Off:</p>
+                                        <p className="text-xs text-gray-500 max-h-16 overflow-y-auto whitespace-pre-wrap bg-gray-50 p-1 rounded text-ellipsis">{scene.voice_off}</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -1484,7 +1514,7 @@
             );
         }
 
-        // Scene List Component
+        // SceneList Component (remains mostly unchanged, but ensure toggleSceneSelection and selectedScenes work if used)
         function SceneList() {
             const { scenes, selectedScenes, toggleSceneSelection, addNotification } = useContext(AppContext);
             
@@ -1496,7 +1526,7 @@
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     <input 
                                         type="checkbox" 
-                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                        className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
                                         checked={selectedScenes.length === scenes.length && scenes.length > 0}
                                         onChange={() => {
                                             if (selectedScenes.length === scenes.length) {
@@ -1536,7 +1566,7 @@
                                             type="checkbox" 
                                             checked={selectedScenes.includes(scene.id)}
                                             onChange={() => toggleSceneSelection(scene.id)}
-                                            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                            className="h-4 w-4 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
                                         />
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1588,46 +1618,173 @@
             if (notifications.length === 0) return null;
             
             return (
-                <div className="fixed bottom-4 right-4 space-y-2 z-50">
+                <div className="fixed bottom-0 right-0 p-6 space-y-3 z-50 w-full max-w-sm">
                     {notifications.map(notification => (
                         <div 
-                            key={notification.id}
-                            className={`toast w-80 p-4 rounded-md shadow-lg flex items-start ${
-                                notification.type === 'error' ? 'bg-red-100 border-l-4 border-red-500' :
-                                notification.type === 'success' ? 'bg-green-100 border-l-4 border-green-500' :
-                                notification.type === 'warning' ? 'bg-yellow-100 border-l-4 border-yellow-500' :
-                                'bg-blue-100 border-l-4 border-blue-500'
-                            }`}
+                            key={notification.id} 
+                            className={`toast p-4 rounded-lg shadow-lg text-sm flex items-center justify-between \
+                                ${notification.type === 'success' ? 'bg-green-500 text-white' : ''} \
+                                ${notification.type === 'error' ? 'bg-red-500 text-white' : ''} \
+                                ${notification.type === 'warning' ? 'bg-yellow-500 text-black' : ''} \
+                                ${notification.type === 'info' ? 'bg-blue-500 text-white' : ''}\
+                            `}
                         >
-                            <div className="flex-shrink-0 pt-0.5">
-                                {notification.type === 'error' ? (
-                                    <svg className="h-5 w-5 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                ) : notification.type === 'success' ? (
-                                    <svg className="h-5 w-5 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                ) : notification.type === 'warning' ? (
-                                    <svg className="h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                ) : (
-                                    <svg className="h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.593 6 8.925 6 12v3.159c0 .538-.214 1.055-.595 1.436L4 20v1a2 2 0 002 2h6a2 2 0 002-2V14.25a2.015 2.015 0 011.571-.821 2.007 2.007 0 01.754 0 1.709 1.709 0 00.254 1.146z" />
-                                    </svg>
-                                )}
-                            </div>
-                            <div className="ml-3">
-                                <p className="text-sm font-medium text-gray-900">{notification.message}</p>
-                            </div>
+                            <span>{notification.message}</span>
                         </div>
                     ))}
                 </div>
             );
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
+        // PlanActions Component (New)
+        function PlanActions() {
+            const { scenes, selectedScenes, addNotification, activeProject, activeEpisode, updateGlobalScenes, setScenes /* ou updateSceneData si plus précis */ } = useContext(AppContext);
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            // Helper to get full details of selected plans
+            const getSelectedPlanDetails = () => {
+                return selectedScenes.map(id => scenes.find(s => s.id === id)).filter(Boolean); // filter(Boolean) removes any undefined if a scene was somehow not found
+            };
+
+            const handleSendToComfy = async () => {
+                const plansToProcess = getSelectedPlanDetails();
+                if (plansToProcess.length === 0) {
+                    addNotification("Veuillez sélectionner au moins un plan.", "warning");
+                    return;
+                }
+                if (!activeProject || !activeEpisode) {
+                    addNotification("Aucun projet ou épisode actif sélectionné.", "error");
+                    return;
+                }
+
+                setIsGenerating(true);
+                addNotification(`Envoi de ${plansToProcess.length} plan(s) à ComfyUI...`, "info");
+
+                // Préparer les données pour l'API
+                // Assurez-vous que chaque plan contient toutes les données nécessaires
+                // L'API backend s'attend à: id, filename, path, ai_concept_placeholder_path, ai_concept_filename, sequence_number
+                const payload = {
+                    project_id: activeProject.id,
+                    episode_id: activeEpisode.id,
+                    plans: plansToProcess.map(p => ({
+                        id: p.id,
+                        filename: p.filename, // nom du fichier raw extrait
+                        path: p.path, // chemin relatif du raw extrait
+                        ai_concept_placeholder_path: p.ai_concept_placeholder_path, // chemin relatif du placeholder
+                        ai_concept_filename: p.ai_concept_filename, // nom du fichier placeholder
+                        plan_number: p.plan_number,
+                        sequence_number: p.sequence_number, // SQ potentiellement modifié
+                        voice_off: p.voice_off,
+                        // Inclure d'autres données si nécessaire pour le bridge ComfyUI
+                    }))
+                };
+
+                try {
+                    const response = await fetch('/api/comfyui/process_plans', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        addNotification(result.message || `${plansToProcess.length} plan(s) traités avec succès.`, "success");
+                        // Mettre à jour les scènes dans le contexte global
+                        // result.results devrait contenir la liste des plans mis à jour
+                        // Chaque plan mis à jour devrait avoir ai_concept_path_final
+                        if (result.results && result.results.length > 0) {
+                            const updatedScenes = scenes.map(s => {
+                                const updatedPlan = result.results.find(rp => rp.id === s.id);
+                                if (updatedPlan) {
+                                    // Mettre à jour le chemin du concept AI pour qu'il pointe vers l'image générée
+                                    // et conserver les autres propriétés
+                                    return {
+                                        ...s, 
+                                        ai_concept_placeholder_path: updatedPlan.ai_concept_path_final || s.ai_concept_placeholder_path,
+                                        // Mettre à jour d'autres champs si nécessaire, ex: status
+                                        status: updatedPlan.status || s.status,
+                                        error: updatedPlan.error || s.error
+                                    };
+                                }
+                                return s;
+                            });
+                            // Utiliser setScenes ou une fonction de mise à jour plus ciblée si disponible
+                            updateGlobalScenes(updatedScenes); 
+                        }
+                    } else {
+                        addNotification(result.error || "Erreur lors du traitement des plans par ComfyUI.", "error");
+                        console.error("Erreur ComfyUI backend:", result);
+                        // Optionnel: mettre à jour le statut des scènes avec les erreurs
+                        if (result.results && result.results.length > 0) {
+                             const updatedScenesWithError = scenes.map(s => {
+                                const failedPlan = result.results.find(rp => rp.id === s.id && rp.error);
+                                if (failedPlan) {
+                                    return { ...s, status: 'error_comfyui', error: failedPlan.error };
+                                }
+                                return s;
+                            });
+                            updateGlobalScenes(updatedScenesWithError);
+                        }
+                    }
+                } catch (error) {
+                    addNotification("Erreur de communication avec le serveur pour ComfyUI.", "error");
+                    console.error("Erreur fetch ComfyUI:", error);
+                } finally {
+                    setIsGenerating(false);
+                }
+            };
+
+            const handleExportSelection = () => {
+                const plansToProcess = getSelectedPlanDetails();
+                if (plansToProcess.length === 0) {
+                    addNotification("Veuillez sélectionner au moins un plan.", "warning");
+                    return;
+                }
+                // Log details for local export
+                console.log("Plans sélectionnés pour export local:", 
+                    plansToProcess.map(p => ({ 
+                        id: p.id, 
+                        raw_image_path: p.path, 
+                        ai_concept_placeholder_path: p.ai_concept_placeholder_path,
+                        details: p // Includes all scene object properties
+                    }))
+                );
+                addNotification(`${plansToProcess.length} plan(s) seraient exportés localement (voir console).`, "info");
+            };
+
+            // Do not render if no scenes are loaded
+            if (!scenes || scenes.length === 0) return null;
+
+            return (
+                <div className="sticky bottom-0 left-0 right-0 bg-white bg-opacity-90 backdrop-blur-sm p-4 shadow-top z-20 flex flex-col sm:flex-row items-center justify-center gap-3 border-t border-gray-200">
+                    <button 
+                        onClick={handleSendToComfy} 
+                        disabled={selectedScenes.length === 0}
+                        className="px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                    >
+                        Envoyer à ComfyUI ({selectedScenes.length})
+                    </button>
+                    <button 
+                        onClick={handleExportSelection} 
+                        disabled={selectedScenes.length === 0}
+                        className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:ring-4 focus:outline-none focus:ring-green-300 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                    >
+                        Exporter Sélection ({selectedScenes.length})
+                    </button>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <React.StrictMode>
+                <App />
+            </React.StrictMode>
+        );
     </script>
 
+</body>
 </html>
