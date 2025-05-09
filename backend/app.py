@@ -20,6 +20,15 @@ import datetime
 import shutil
 import logging
 
+# Intégration MCP ComfyUI
+try:
+    from comfy_mcp import init_comfy_mcp
+    COMFY_MCP_AVAILABLE = True
+    print("[Backend] Intégration MCP ComfyUI disponible")
+except ImportError:
+    COMFY_MCP_AVAILABLE = False
+    print("[Backend] AVERTISSEMENT: MCP ComfyUI non disponible - pip install comfy-mcp-server pour l'activer")
+
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'zip', 'png', 'jpg', 'jpeg'}
 
@@ -58,6 +67,15 @@ try:
 except ImportError as e:
     print(f"[Backend] ERREUR CRITIQUE: Impossible d'importer les blueprints: {e}")
     # sys.exit(1)
+
+# --- Initialisation du MCP ComfyUI ---
+if COMFY_MCP_AVAILABLE:
+    try:
+        # Initialiser le serveur MCP ComfyUI avec l'URL de votre instance
+        init_comfy_mcp(app, "http://127.0.0.1:8188")
+        print("[Backend] MCP ComfyUI initialisé avec succès - Endpoints disponibles")
+    except Exception as e:
+        print(f"[Backend] Erreur d'initialisation MCP ComfyUI: {e}")
 
 # --- Bloc d'exécution principal ---
 if __name__ == '__main__':

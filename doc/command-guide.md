@@ -1,4 +1,4 @@
-# Journal de Bord - Projet Madsea (mise à jour 2025-05-08)
+# Guide des commandes Madsea (mise à jour 2025-05-08)
 
 ## Structure du Frontend
 - Le frontend principal de Madsea est désormais situé dans le dossier `frontend/` sous le nom `index.html` (ex-DeepSite migré).

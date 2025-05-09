@@ -10,7 +10,12 @@ COMFYUI_UPLOAD_URL = "http://127.0.0.1:8188/upload/image"
 
 # Chemin vers le template de workflow ComfyUI
 # S'assurer que ce chemin est correct par rapport à l'emplacement de comfyui_bridge.py
-WORKFLOW_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '..', 'ComfyUI', 'workflows', 'Windsurf_Template.json')
+# Workflow "Ombres Chinoises" optimisé pour la production des 70 plans
+WORKFLOW_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '..', 'ComfyUI', 'workflows', 'Madsea_OmbresChiCX.json')
+# Fallback sur le template générique si workflow spécifique non trouvé
+if not os.path.exists(WORKFLOW_TEMPLATE_PATH):
+    WORKFLOW_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), '..', 'ComfyUI', 'Windsurf_ComfyUI_Workflow_Template.json')
+    print(f"[ComfyUI] ATTENTION: Workflow optimisé non trouvé, utilisation du template générique")
 
 # Configuration de base pour la nomenclature
 # Ces valeurs seraient normalement passées en paramètres ou récupérées du contexte du projet

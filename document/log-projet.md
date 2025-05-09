@@ -4,13 +4,10 @@
 
 ### Structure des dossiers
 - Clarification importante sur la structure du frontend:
-  - Le frontend principal est situé dans le dossier `front madsea/` (avec un espace)
-  - Il s'agit d'une implémentation HTML DeepSite qui est active et fonctionnelle avec les fichiers suivants:
-    - `index.html` : Page principale
-    - `preview_selection_restylage.html` et `preview_selection_restylage_auto.html` : Pages de prévisualisation
-    - `validation_button.js` : Script JavaScript pour validation
-  - Le dossier `frontend/` contient une implémentation React/Vite qui est actuellement désactivée
-  - DeepSite est le service frontend actif, tandis que React/Vite est désactivé pour le moment
+  - Le frontend principal est désormais situé dans le dossier `frontend/` sous le nom `index.html` (ex-DeepSite migré).
+  - Le dossier `front madsea` n’existe plus ou ne contient plus aucune version active du frontend.
+  - Toute la documentation, les guides et les workflows doivent pointer vers `frontend/index.html` comme unique interface utilisateur.
+  - Le dossier `frontend/` ne contient plus de version React/Vite active, mais la version HTML/React simple (DeepSite migré).
 
 ### Services actifs
 - Backend Flask : Disponible sur http://localhost:5000
