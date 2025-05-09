@@ -16,6 +16,8 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import psutil
 import logging
 from enum import Enum

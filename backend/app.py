@@ -77,6 +77,11 @@ if COMFY_MCP_AVAILABLE:
     except Exception as e:
         print(f"[Backend] Erreur d'initialisation MCP ComfyUI: {e}")
 
+# Route racine pour servir le frontend React/Tailwind
+@app.route('/', methods=['GET'])
+def serve_frontend():
+    return send_from_directory('../frontend', 'index.html')
+
 # --- Bloc d'exécution principal ---
 if __name__ == '__main__':
     print("[Backend] Serveur Flask principal démarré sur http://localhost:5000")
