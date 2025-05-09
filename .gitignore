@@ -52,13 +52,13 @@ node_modules/
 *.ckpt
 *.bin
 
-# Ignorer spécifiquement le dossier des modèles ComfyUI mais versionner le reste
-ComfyUI/models/
-ComfyUI/models/**
-
-# Mais inclure explicitement tout le reste de ComfyUI 
+# D'abord inclure ComfyUI explicitement
 !ComfyUI/
 !ComfyUI/**
+
+# Ensuite ignorer spécifiquement les modèles
+ComfyUI/models/
+ComfyUI/models/**
 
 # Re-ignorer les fichiers lourds partout (même dans ComfyUI)
 *.safetensors
@@ -66,3 +66,8 @@ ComfyUI/models/**
 *.ckpt
 *.bin
 *.pth
+ComfyUI/**/*.safetensors
+ComfyUI/**/*.pt
+ComfyUI/**/*.ckpt
+ComfyUI/**/*.bin
+ComfyUI/**/*.pth

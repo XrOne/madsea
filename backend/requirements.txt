@@ -1,7 +1,0 @@
-Flask>=2.0
-Flask-Cors>=3.0
-werkzeug>=2.0 # Pour secure_filename
-PyMuPDF>=1.18 # Pour l'extraction PDF
-Pillow>=9.0 # Pour la manipulation d'images avec pytesseract
-pytesseract>=0.3 # Pour l'interface OCR avec Tesseract
-opencv-python-headless

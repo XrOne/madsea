@@ -1,5 +1,0 @@
-Ceci est un test d'OCR
-pour le projet Madsea
-
-L'objectif est de vérifier que le texte est correctement extrait
-via pytesseract et intégré dans la réponse JSON.

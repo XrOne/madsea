@@ -1,1 +1,0 @@
-# Style management module for the Storyboard-to-Video AI Platform
