@@ -52,8 +52,17 @@ node_modules/
 *.ckpt
 *.bin
 
-# Mais conserver la structure des dossiers - ATTENTION cette règle peut poser problème
-# Modifié pour être plus spécifique
-!ComfyUI/*/
-!ComfyUI/*/*/
-!ComfyUI/*/*/*/
+# Ignorer spécifiquement le dossier des modèles ComfyUI mais versionner le reste
+ComfyUI/models/
+ComfyUI/models/**
+
+# Mais inclure explicitement tout le reste de ComfyUI 
+!ComfyUI/
+!ComfyUI/**
+
+# Re-ignorer les fichiers lourds partout (même dans ComfyUI)
+*.safetensors
+*.pt
+*.ckpt
+*.bin
+*.pth
