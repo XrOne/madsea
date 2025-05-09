@@ -31,6 +31,23 @@
 - Déploiement sur cloud (RunPod) si besoin de GPU supplémentaire
 - Intégration API avec le frontend DeepSite
 
+## 09/05/2025 - Mise à jour de la structure frontend
+
+### Structure des dossiers corrigée
+- Clarification définitive sur la structure du frontend:
+  - Le frontend principal est la version React/TailwindCSS dans `frontend/index.html` (DeepSite complètement migré)
+  - Le dossier `front madsea` est maintenant obsolète et vide (toutes les fonctionnalités ont été migrées)
+  - Toute la documentation et les workflows doivent pointer vers `frontend/index.html` comme unique interface utilisateur
+  - Le nouveau frontend intègre l'interface complète avec le bridge ComfyUI
+
+### Services actifs 
+- Backend Flask : Disponible sur http://localhost:5000
+  - Fournit les API d'extraction et de gestion des projets
+  - Intègre le bridge pour communiquer avec ComfyUI
+  - Routes principales : `/test`, `/extract`, endpoints du projet, `/api/generate_ai_concept`
+- Frontend React/TailwindCSS : accessible via http://localhost:5000 ou directement via `frontend/index.html`
+- ComfyUI : Accessible sur http://localhost:8188 mais généralement utilisé via le bridge
+
 ## 07/05/2025 - Structure du projet et configuration
 
 ### Structure des dossiers
@@ -39,9 +56,3 @@
   - Le dossier `front madsea` n'existe plus ou ne contient plus aucune version active du frontend.
   - Toute la documentation, les guides et les workflows doivent pointer vers `frontend/index.html` comme unique interface utilisateur.
   - Le dossier `frontend/` ne contient plus de version React/Vite active, mais la version HTML/React simple (DeepSite migré).
-
-### Services actifs
-- Backend Flask : Disponible sur http://localhost:5000
-  - Fournit les API d'extraction et de gestion des projets
-  - Routes principales : `/test`, `/extract`, endpoints du projet
-- Frontend DeepSite (HTML/JS simple) : actif et fonctionnel dans `front madsea/`

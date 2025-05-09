@@ -32,6 +32,9 @@ NOMENCLATURE_TEST_OUTPUT_BASE = Path("i:/Madsea/outputs/nomenclature_test")
 # Configuration du logger
 logger = logging.getLogger(__name__)
 
+# Définition du Blueprint pour l'extraction
+extraction_bp = Blueprint('extraction', __name__)
+
 def allowed_file(filename):
     """Vérifie si l'extension du fichier est autorisée."""
     return '.' in filename and \
