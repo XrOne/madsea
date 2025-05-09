@@ -17,7 +17,8 @@
 """
 
 import os
-# Activation du GPU - Ne pas désactiver CUDA
+# Configuration pour utiliser le GPU pour Madsea
+# Pour désactiver CUDA, décommenter la ligne suivante
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import psutil
 import logging

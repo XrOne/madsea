@@ -3,8 +3,10 @@ echo ===== MADSEA - DEMARRAGE DES SERVEURS =====
 echo.
 echo Ce script va demarrer :
 echo  1. Backend Flask avec bridge ComfyUI (localhost:5000)
-echo  2. ComfyUI (localhost:8188)
+echo  2. ComfyUI (localhost:8188) avec GPU CUDA
 echo  3. Frontend React/TailwindCSS (via backend)
+echo.
+echo Toutes les dependances sont installees : PyTorch+CUDA, transformers, scipy, kornia, etc.
 echo.
 echo Appuyez sur une touche pour continuer...
 pause > nul
