@@ -17,7 +17,8 @@
 """
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+# Activation du GPU - Ne pas désactiver CUDA
+# os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import psutil
 import logging
 from enum import Enum
@@ -44,7 +45,7 @@ class CPUState(Enum):
 # Determine VRAM State
 vram_state = VRAMState.NORMAL_VRAM
 set_vram_to = VRAMState.NORMAL_VRAM
-cpu_state = CPUState.GPU
+cpu_state = CPUState.GPU  # Utilisation GPU réactivée selon la demande utilisateur
 
 total_vram = 0
 
