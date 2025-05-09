@@ -1,0 +1,20 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+project_structure:
+  root/
+    ├── app/                  # Backend principal
+    │   ├── parsing/          # Extraction d'images + OCR texte
+    │   ├── generation/       # Text2Image / Image2Image + style
+    │   ├── style_training/   # LoRA fine-tuning & gestion de styles
+    │   ├── video/            # AnimateDiff, FFMPEG, Kling
+    │   └── ui/               # SwarmUI / Front Web Flask ou React
+    ├── assets/               # Exemples de storyboards, modèles, styles
+    ├── presets/              # Presets ComfyUI (workflow Declics, Labo)
+    ├── configs/
+    │   └── compute.yaml      # Local/Cloud selection
+    ├── requirements.txt
+    └── main.py

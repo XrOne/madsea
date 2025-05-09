@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storyboard-to-Video AI Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body { padding-top: 2rem; background-color: #f8f9fa; }
+        .header { margin-bottom: 2rem; }
+        .card { margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Storyboard-to-Video AI Platform</h1>
+            <p class="lead">Convert your storyboard into a stylized animated video</p>
+        </div>
+
+        <!-- Placeholder for alerts -->
+        <div id="alertPlaceholder"></div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <!-- Project Selection / Creation -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="bi bi-folder2-open"></i> Project</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="projectSelect" class="form-label">Select Project</label>
+                            <select class="form-select" id="projectSelect">
+                                <option value="" selected disabled>-- Loading Projects --</option>
+                                <!-- Projects loaded via JS -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newProjectName" class="form-label">Or Create New Project</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="newProjectName" placeholder="New project name...">
+                                <button class="btn btn-outline-secondary" type="button" id="createProjectBtn"><i class="bi bi-plus-lg"></i> Create</button>
+                            </div>
+                        </div>
+                        <div id="projectStatus" class="mt-2"></div>
+                    </div>
+                </div>
+
+                <!-- Upload Storyboard -->
+                <div class="card mb-4" id="uploadCard" style="display: none;"> <!-- Hidden initially -->
+                    <div class="card-header">
+                        <h5><i class="bi bi-upload"></i> Upload Storyboard</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="storyboardFile" class="form-label">Select PDF or Images</label>
+                                <input class="form-control" type="file" id="storyboardFile" name="storyboard" accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                            <button type="submit" id="uploadBtn" class="btn btn-primary">Upload to Project</button>
+                        </form>
+                        <div id="uploadStatus" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <!-- Generation Options -->
+                <div class="card mb-4" id="generationOptionsCard" style="display: none;"> <!-- Hidden initially -->
+                    <div class="card-header">
+                        <h5><i class="bi bi-gear"></i> Generation Options</h5>
+                    </div>
+                    <div class="card-body">
+                         <!-- Style selection can be added back here later -->
+                        <button id="generateBtn" class="btn btn-success w-100 mb-2" disabled><i class="bi bi-images"></i> Generate Scene Images</button>
+                         <div class="form-text mt-1">Requires a selected project and uploaded storyboard.</div>
+                    </div>
+                </div>
+
+                 <!-- Generation Progress -->
+                <div class="card mb-4" id="progressCard" style="display: none;"> <!-- Hidden initially -->
+                     <div class="card-header">
+                         <h5><i class="bi bi-activity"></i> Generation Progress <span id="currentTaskLabel" class="badge bg-secondary ms-2">No Task</span></h5>
+                     </div>
+                     <div class="card-body">
+                        <div class="progress" style="height: 25px;">
+                            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                        </div>
+                        <p id="statusMessage" class="mt-2 text-muted">Ready</p>
+                    </div>
+                </div>
+
+                <!-- Generated Images -->
+                <div id="generatedImagesCard" class="card mt-4" style="display: none;">
+                    <div class="card-header">
+                        <h5 class="mb-0">Images Générées</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="generatedImagesList" class="row">
+                            <!-- Les images seront ajoutées ici dynamiquement -->
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const createProjectBtn = document.getElementById('createProjectBtn');
+            const newProjectNameInput = document.getElementById('newProjectName');
+            const projectSelect = document.getElementById('projectSelect');
+            const projectStatus = document.getElementById('projectStatus');
+            const uploadCard = document.getElementById('uploadCard');
+        const uploadForm = document.getElementById('uploadForm');
+            const storyboardFile = document.getElementById('storyboardFile');
+            const uploadBtn = document.getElementById('uploadBtn');
+        const uploadStatus = document.getElementById('uploadStatus');
+            const generationOptionsCard = document.getElementById('generationOptionsCard');
+        const generateBtn = document.getElementById('generateBtn');
+            const progressCard = document.getElementById('progressCard');
+        const progressBar = document.getElementById('progressBar');
+        const statusMessage = document.getElementById('statusMessage');
+            const currentTaskLabel = document.getElementById('currentTaskLabel');
+            const generatedImagesCard = document.getElementById('generatedImagesCard');
+            const generatedImagesList = document.getElementById('generatedImagesList');
+            const alertPlaceholder = document.getElementById('alertPlaceholder');
+            console.log('Initial alertPlaceholder element:', alertPlaceholder); // LOG 1
+            let selectedProject = null;
+            let uploadedFilename = null;
+            let taskId = null;
+
+            // Helper pour afficher les alertes (utilisant Bootstrap)
+            function showAlert(title, message, type = 'info') {
+                console.log('showAlert called. alertPlaceholder is:', alertPlaceholder); // LOG 2
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = [
+                    `<div class="alert alert-${type} alert-dismissible fade show" role="alert">`,
+                    `   <strong>${title}:</strong> ${message}`,
+                    '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+                    '</div>'
+                ].join('');
+                // alertPlaceholder.innerHTML = ''; // Temporairement commenté pour débogage
+                alertPlaceholder.append(wrapper);
+            }
+
+            // Helper pour mettre à jour la barre de progression
+            function updateProgressBar(progress, total) {
+                const progressBar = document.getElementById('progressBar');
+                const progressValue = total > 0 ? Math.round((progress / total) * 100) : 0;
+                progressBar.style.width = `${progressValue}%`;
+                progressBar.setAttribute('aria-valuenow', progressValue);
+                progressBar.textContent = `${progressValue}%`;
+                document.getElementById('progressCard').style.display = 'block';
+            }
+
+            // Helper pour mettre à jour le message de statut
+            function updateStatusMessage(message) {
+                document.getElementById('statusMessage').textContent = message || 'En attente...';
+            }
+
+            // --- Project Management ---
+            async function loadProjects() {
+                console.log("Loading projects...");
+                projectSelect.disabled = true;
+                fetch('/projects') // Correct endpoint
+                    .then(response => response.ok ? response.json() : Promise.reject('Failed to load projects'))
+                    .then(projects => {
+                        projectSelect.innerHTML = '<option value="" selected disabled>-- Select a Project --</option>'; // Reset
+                        if (projects && projects.length > 0) {
+                            projects.forEach(project => {
+                                const option = document.createElement('option');
+                                option.value = project.name;
+                                option.textContent = project.name;
+                                projectSelect.appendChild(option);
+                            });
+                        } else {
+                            projectSelect.innerHTML = '<option value="" selected disabled>-- No projects found --</option>';
+                        }
+                        console.log("Projects loaded:", projects);
+                    })
+                    .catch(error => {
+                        console.error('Error loading projects:', error);
+                        projectStatus.innerHTML = `<div class="alert alert-warning">Could not load projects.</div>`;
+                        projectSelect.innerHTML = '<option value="" selected disabled>-- Error Loading --</option>';
+                    })
+                    .finally(() => {
+                        projectSelect.disabled = false;
+                    });
+            }
+
+            function createProject() {
+                const projectName = newProjectNameInput.value.trim();
+                if (!projectName) {
+                    projectStatus.innerHTML = '<div class="alert alert-warning">Please enter a project name.</div>';
+                    return;
+                }
+                console.log(`Creating project: ${projectName}`);
+                projectStatus.innerHTML = '<div class="alert alert-info">Creating project...</div>';
+                createProjectBtn.disabled = true;
+
+                fetch('/projects', { // Correct endpoint
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ name: projectName })
+                })
+                .then(response => response.json().then(data => ({ status: response.status, body: data })))
+                .then(({ status, body }) => {
+                    if (status === 201) { // Check for 201 Created
+                        projectStatus.innerHTML = `<div class="alert alert-success">Project '${body.name}' created. Select it from the list.</div>`;
+                        newProjectNameInput.value = '';
+                        loadProjects(); // Reload project list
+                    } else {
+                        projectStatus.innerHTML = `<div class="alert alert-danger">Error: ${body.error || 'Failed to create project'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    projectStatus.innerHTML = '<div class="alert alert-danger">Network error creating project.</div>';
+                    console.error('Error creating project:', error);
+                })
+                .finally(() => {
+                    createProjectBtn.disabled = false;
+                });
+            }
+
+            function selectProject() {
+                selectedProject = projectSelect.value;
+                if (selectedProject) {
+                    console.log(`Project selected: ${selectedProject}`);
+                    projectStatus.innerHTML = `<div class="alert alert-secondary">Selected Project: <strong>${selectedProject}</strong></div>`;
+                    uploadCard.style.display = 'block'; // Show upload section
+                    uploadStatus.innerHTML = ''; // Clear previous upload status
+                    storyboardFile.value = ''; // Clear file input
+                    generationOptionsCard.style.display = 'block'; // Show generation options
+                    progressCard.style.display = 'none'; // Hide progress
+                    generateBtn.disabled = true; // Disable generate btn until upload
+                    uploadedFilename = null; // Reset filename
+                } else {
+                    projectStatus.innerHTML = '';
+                    uploadCard.style.display = 'none'; // Hide upload section
+                    generationOptionsCard.style.display = 'none';
+                    progressCard.style.display = 'none';
+                    uploadedFilename = null;
+                }
+            }
+
+            // --- Upload --- 
+            function handleUpload(e) {
+                e.preventDefault();
+                if (!selectedProject) {
+                    uploadStatus.innerHTML = `<div class="alert alert-warning">Please select a project first.</div>`;
+                    return;
+                }
+                if (!storyboardFile.files || storyboardFile.files.length === 0) {
+                    uploadStatus.innerHTML = `<div class="alert alert-warning">Please choose a file to upload.</div>`;
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('storyboard', storyboardFile.files[0]);
+                uploadStatus.innerHTML = `<div class="alert alert-info">Uploading to project '${selectedProject}'... <span class="spinner-border spinner-border-sm"></span></div>`;
+                uploadBtn.disabled = true;
+
+                fetch(`/projects/${selectedProject}/upload`, { method: 'POST', body: formData })
+                .then(response => response.json().then(data => ({ ok: response.ok, body: data })))
+                .then(({ ok, body }) => {
+                    if (ok && body.success) {
+                        uploadedFilename = body.filename;
+                        uploadStatus.innerHTML = `<div class="alert alert-success">Uploaded <strong>${body.filename}</strong> to project '${selectedProject}'. Ready to generate.</div>`;
+                        generateBtn.disabled = false; // ENABLE GENERATE BUTTON
+                        progressCard.style.display = 'none'; // Hide progress from previous runs
+                    } else {
+                        uploadedFilename = null;
+                        uploadStatus.innerHTML = `<div class="alert alert-danger">Error: ${body.error || 'Upload failed'}</div>`;
+                        generateBtn.disabled = true;
+                    }
+                })
+                .catch(error => {
+                    uploadedFilename = null;
+                    uploadStatus.innerHTML = `<div class="alert alert-danger">Network error during upload.</div>`;
+                    console.error("Upload error:", error);
+                    generateBtn.disabled = true;
+                })
+                .finally(() => { uploadBtn.disabled = false; });
+            }
+
+            // --- Generation ---
+            async function startGeneration() {
+                if (!selectedProject) {
+                    showAlert('Erreur', 'Veuillez sélectionner un projet.', 'danger');
+                    return;
+                }
+                if (!uploadedFilename) {
+                    showAlert('Erreur', 'Veuillez télécharger un storyboard.', 'danger');
+                    return;
+                }
+
+                // Utilisation de valeurs par défaut pour le style et le nom de fichier de sortie car l'UI a été simplifiée
+                const style = 'declic'; // Style par défaut, à revoir si l'UI permet de sélectionner
+                const outputFilename = `${selectedProject}_generated_images_${Date.now()}`; // Nom de fichier par défaut
+
+                try {
+                    const response = await fetch(`/projects/${selectedProject}/generate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            storyboard_filename: uploadedFilename,
+                            style: style,
+                            output_filename: outputFilename // Utilisation d'un nom par défaut, pas de vidéo ici
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (data.success && data.task_id) {
+                        showAlert('Succès', 'Génération démarrée.', 'success');
+                        checkTaskStatus(data.task_id);
+                    } else {
+                        showAlert('Erreur', data.message || 'Erreur lors du démarrage de la génération.', 'danger');
+                    }
+                } catch (error) {
+                    showAlert('Erreur', 'Erreur lors de la communication avec le serveur.', 'danger');
+                    console.error('Error:', error);
+                }
+            }
+
+            async function checkTaskStatus(taskId) {
+                let statusInterval = null; // Keep interval ID local to the function call that starts polling
+                const pollInterval = 5000; // Poll every 5 seconds
+
+                // Function to perform a single status check
+                const performCheck = async () => {
+                    try {
+                        const response = await fetch(`/status/${taskId}`);
+                        if (!response.ok) {
+                            console.error(`Error fetching status ${taskId}: ${response.status}`);
+                            updateStatusMessage(`Erreur ${response.status} lors de la récupération du statut.`);
+                            if (statusInterval) clearInterval(statusInterval); // Stop polling on fetch error
+                            currentTaskLabel.textContent = 'Error';
+                            return;
+                        }
+                        const data = await response.json();
+
+                        // --- Log received data for debugging ---
+                        console.debug("Received Task Status Data:", data);
+
+                        // --- Update UI elements --- 
+                        updateProgressBar(data.progress || 0, data.total || 0); // Use total, not total_scenes if available
+                        updateStatusMessage(data.message || 'En attente...');
+                        currentTaskLabel.textContent = `Task: ${taskId.substring(0, 8)}... (${data.status || '?'.toUpperCase()})`;
+                        progressCard.style.display = 'block';
+
+                        // --- Display Images --- 
+                        // Check if scene data exists and is an array before calling display
+                        if (data && data.scenes && Array.isArray(data.scenes)) {
+                            // *** PASS THE DATA OBJECT EXPLICITLY ***
+                            displayGeneratedImages(data, selectedProject);
+                        }
+
+                        // --- Check for Completion/Failure --- 
+                        const isComplete = data.status === 'complete';
+                        const isFailed = data.status === 'error'; // Check for 'error' status
+                        const progressComplete = data.total > 0 && data.progress >= data.total;
+
+                        if (isComplete || isFailed || progressComplete) {
+                            console.log(`Task ${taskId} finished with status: ${data.status}`);
+                            if (statusInterval) {
+                                clearInterval(statusInterval);
+                                statusInterval = null;
+                            }
+                            updateStatusMessage(`Génération terminée (Statut: ${data.status})`);
+                            updateProgressBar(data.progress || data.total || 0, data.total || 1); // Ensure bar is full/correct
+                            currentTaskLabel.textContent = `Task: ${taskId.substring(0, 8)}... (Finished)`;
+                            if (isFailed) {
+                                showAlert('Échec de la tâche', data.message || "La génération a échoué.", 'danger');
+                            }
+                        }
+
+                    } catch (error) {
+                        console.error("Error in performCheck:", error);
+                        updateStatusMessage("Erreur lors de la vérification du statut.");
+                        if (statusInterval) clearInterval(statusInterval); // Stop polling on JS error
+                        currentTaskLabel.textContent = 'Error';
+                    }
+                };
+
+                // --- Start Polling --- 
+                console.log(`Starting status polling for task ${taskId}`);
+                await performCheck(); // Perform initial check immediately
+                if (!statusInterval && !['complete', 'error'].includes(background_tasks[taskId]?.status)) { // Check initial status before setting interval
+                     statusInterval = setInterval(performCheck, pollInterval); // Start polling only if not already finished
+                } else {
+                    console.log(`Task ${taskId} already finished or polling active. Not starting new interval.`);
+                }
+            }
+
+            function displayGeneratedImages(data, selectedProject) { // Now accepts the full data object
+                const container = document.getElementById('generatedImagesList');
+                container.innerHTML = ''; // Nettoyer le conteneur
+                generatedImagesCard.style.display = 'none'; // Hide initially
+
+                // Ensure data.scenes exists and is an array
+                if (!data || !data.scenes || !Array.isArray(data.scenes)) {
+                    console.warn("displayGeneratedImages called with invalid or missing scenes data.", data);
+                    return; // Do nothing if scene data is bad
+                }
+
+                console.log(`Displaying ${data.scenes.length} scenes for project ${selectedProject}`);
+
+                data.scenes.forEach((scene, index) => {
+                    console.debug(`Processing scene ${index}:`, scene);
+                    const col = document.createElement('div');
+                    col.className = 'col-md-6 mb-4';
+
+                    const card = document.createElement('div');
+                    card.className = 'card h-100';
+
+                    const cardBody = document.createElement('div');
+                    cardBody.className = 'card-body';
+
+                    const title = document.createElement('h6');
+                    title.className = 'card-title';
+                    title.textContent = `Scène ${index + 1} (${scene.status || 'unknown'})`;
+
+                    const imageContainer = document.createElement('div');
+                    imageContainer.className = 'd-flex justify-content-between align-items-start'; // Align items top
+
+                    // --- Original Image --- 
+                    const originalContainer = document.createElement('div');
+                    originalContainer.className = 'w-50 me-2 text-center';
+                    const originalImg = document.createElement('img');
+                    let originalFilename = 'placeholder.png'; // Default placeholder
+                    if (scene.image && typeof scene.image === 'string'){
+                         originalFilename = scene.image.split('/').pop(); 
+                         originalImg.src = `/projects/${selectedProject}/temp/${originalFilename}`;
+                         originalImg.alt = 'Image originale';
+                         originalImg.onerror = () => { // Handle image loading errors
+                             console.warn(`Failed to load original image: ${originalImg.src}`);
+                             originalImg.alt = 'Original Image Not Found';
+                             // Optionally replace with a placeholder
+                             originalImg.src = '#'; // Or a real placeholder URL
+                             originalImg.style.border = '1px dashed red';
+                         }
+                    } else {
+                         originalImg.alt = 'No original image path';
+                         originalImg.src = '#';
+                         originalImg.style.border = '1px dashed grey';
+                    }
+                    originalImg.className = 'img-fluid'; 
+                    originalContainer.appendChild(originalImg);
+                    originalContainer.appendChild(document.createTextNode('Original'));
+
+                    // --- Generated Image --- 
+                    const generatedContainer = document.createElement('div');
+                    generatedContainer.className = 'w-50 ms-2 text-center';
+                    const generatedImg = document.createElement('img');
+                    generatedImg.id = `generated-img-${index}`;
+                    generatedImg.className = 'img-fluid generated-placeholder'; // Placeholder style
+                    generatedImg.alt = 'Image générée (en attente)';
+                    generatedImg.src = '#'; // Start with placeholder
+                    generatedImg.style.border = '1px dashed lightblue'; // Indicate placeholder
+
+                    if (scene.status === 'complete' && scene.generated_image_path) {
+                        const generatedFilename = scene.generated_image_path.split('/').pop();
+                        generatedImg.src = `/projects/${selectedProject}/generated/${generatedFilename}`;
+                        generatedImg.alt = 'Image générée';
+                        generatedImg.classList.remove('generated-placeholder');
+                        generatedImg.style.border = 'none';
+                        generatedImg.onerror = () => {
+                            console.warn(`Failed to load generated image: ${generatedImg.src}`);
+                            generatedImg.alt = 'Generated Image Not Found';
+                            generatedImg.src = '#'; 
+                            generatedImg.style.border = '1px dashed orange';
+                        }
+                    } else if (scene.status === 'generating') {
+                        generatedImg.alt = 'Génération en cours...';
+                        generatedImg.style.border = '1px dashed blue';
+                    } else if (scene.status === 'error') {
+                         generatedImg.alt = `Erreur: ${scene.error || 'Inconnue'}`;
+                         generatedImg.src = '#'; // Maybe an error icon?
+                         generatedImg.style.border = '1px dashed red';
+                    }
+                    generatedContainer.appendChild(generatedImg);
+                    generatedContainer.appendChild(document.createTextNode('Generated'));
+
+
+                    imageContainer.appendChild(originalContainer);
+                    imageContainer.appendChild(generatedContainer);
+
+                    cardBody.appendChild(title);
+                    cardBody.appendChild(imageContainer);
+                    card.appendChild(cardBody);
+                    col.appendChild(card);
+                    container.appendChild(col);
+                });
+
+                // Make the card visible only if there are scenes to display
+                if (data.scenes.length > 0) {
+                    generatedImagesCard.style.display = 'block';
+                }
+            }
+
+            // Add event listeners
+            createProjectBtn.addEventListener('click', createProject);
+            projectSelect.addEventListener('change', selectProject);
+            uploadForm.addEventListener('submit', handleUpload);
+            generateBtn.addEventListener('click', startGeneration);
+
+            // Initial load
+            loadProjects();
+        });
+    </script>
+</body>
+</html>

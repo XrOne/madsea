@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Styles custom migrés depuis l'ancien index.html */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Garde les variables CSS par défaut de Vite pour le moment, on ajustera si besoin */
+  font-family: 'Montserrat', system-ui, Avenir, Helvetica, Arial, sans-serif; /* Ajout Montserrat */
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  /* Ajuster les couleurs si nécessaire pour correspondre à l'ancien design */
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.gradient-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.sidebar {
+    transition: all 0.3s ease;
+}
+
+.scene-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    /* Appliquer les styles de base ici ou directement via Tailwind */
+}
+
+.scene-card:hover {
+    transform: translateY(-2px);
+    /* Utiliser les classes shadow de Tailwind ou définir ici */
+    /* box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); */
+}
+
+.progress-ring__circle {
+    transition: stroke-dashoffset 0.35s;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+}
+
+/* Tailwind a déjà une classe 'animate-pulse' */
+
+/* Tailwind gère généralement bien les scrollbars, mais on peut ajouter si besoin */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #bdbdbd; /* Couleur plus douce */
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #a5a5a5;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "cinematic",
+  "description": "Cinematic style with dramatic lighting",
+  "prompt_prefix": "cinematic, dramatic lighting, film grain, movie scene",
+  "prompt_suffix": "8k, detailed, professional photography",
+  "negative_prompt": "low quality, blurry, distorted, deformed, cartoon, anime",
+  "workflow_template": "default_controlnet.json",
+  "lora_name": "",
+  "lora_strength": 0.8,
+  "cfg_scale": 8.0,
+  "steps": 25,
+  "sampler": "euler_ancestral"
+}

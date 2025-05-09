@@ -1,0 +1,117 @@
+{
+    "nodes": [
+        {
+            "type": "LoadImage",
+            "id": "load_image",
+            "params": {
+                "path": "${storyboard_image_path}"
+            }
+        },
+        {
+            "type": "CannyEdgePreprocessor",
+            "id": "canny_edge",
+            "params": {
+                "low_threshold": 100,
+                "high_threshold": 200
+            }
+        },
+        {
+            "type": "ControlNet",
+            "id": "controlnet_canny",
+            "params": {
+                "model": "control_v11p_sd15_canny_fp16.safetensors",
+                "weight": 1.3
+            }
+        },
+        {
+            "type": "CheckpointLoader",
+            "id": "checkpoint",
+            "params": {
+                "model": "RealVisXL_V5.0_fp16.safetensors"
+            }
+        },
+        {
+            "type": "LoRALoader",
+            "id": "lora_silhouette",
+            "params": {
+                "checkpoint": "Shadow_Style_XL.safetensors",
+                "weight": 1.2
+            }
+        },
+        {
+            "type": "LoRALoader",
+            "id": "lora_silhouette_photo",
+            "params": {
+                "checkpoint": "silhouette_photographic_style_lora.safetensors",
+                "weight": 0.7
+            }
+        },
+        {
+            "type": "Prompt",
+            "id": "prompt_main",
+            "params": {
+                "positive": "cinematic silhouette, high contrast, noir style, dramatic shadows, atmospheric, detailed shadows, ${prompt_text}",
+                "negative": "color, text, watermark, signature, details in shadows, noise, grainy, low quality"
+            }
+        },
+        {
+            "type": "KSampler",
+            "id": "sampler",
+            "params": {
+                "sampler": "DPM++ 2M Karras",
+                "steps": 20,
+                "cfg_scale": 7.5,
+                "resolution": [
+                    1920,
+                    1080
+                ],
+                "seed": "${seed}"
+            }
+        },
+        {
+            "type": "SaveImage",
+            "id": "save_image",
+            "params": {
+                "path": "${output_path}"
+            }
+        }
+    ],
+    "connections": [
+        [
+            "load_image",
+            "canny_edge"
+        ],
+        [
+            "canny_edge",
+            "controlnet_canny"
+        ],
+        [
+            "checkpoint",
+            "sampler"
+        ],
+        [
+            "lora_silhouette",
+            "sampler"
+        ],
+        [
+            "lora_silhouette_photo",
+            "sampler"
+        ],
+        [
+            "prompt_main",
+            "sampler"
+        ],
+        [
+            "controlnet_canny",
+            "sampler"
+        ],
+        [
+            "sampler",
+            "save_image"
+        ]
+    ],
+    "settings": {
+        "cuda_device": 0,
+        "use_low_vram": true
+    }
+}

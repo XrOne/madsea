@@ -1,0 +1,19 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+Image Gen : Stable Diffusion (ComfyUI), DALL-E, Midjourney
+
+Video Gen : AnimateDiff, Runway, Kling AI
+
+OCR : pytesseract
+
+Parsing PDF : PyMuPDF
+
+Training : LoRA trainer sur base SD 1.5 (images utilisateur + prompts)
+
+Prompt guidance : utiliser Gemini ou Qwen 2.1 pour rewriting prompts intelligents
+
+Cloud Bridge : Ollama, Supabase ou gestion des appels API externes

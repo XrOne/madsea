@@ -1,0 +1,64 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+1-PDF/Storyboard Parsing
+ # Extract images + text via OCR (if needed)
+from PyMuPDF + pytesseract
+Support .pdf, .jpg, .png
+
+Extraire : chaque plan avec image + texte descriptif
+
+OCR fallback si texte dans image
+2. Image Generation (via ComfyUI ou API)
+Prompt = [description plan] + style actuel
+
+Si image storyboard disponible : utiliser comme ControlNet (scribble + pose + depth)
+
+Générer une version silhouette ou style labo selon le modèle préchargé
+
+Styles disponibles :
+
+json
+Copier
+Modifier
+[
+  { "name": "declic", "model": "stable-diffusion-1.5", "lora": "declic-silhouette-v1" },
+  { "name": "labo", "model": "stable-diffusion-xl", "lora": "realistic-lab-diagrams" }
+]
+Si DALL-E ou Midjourney est activé dans la config, envoyer en fallback via API.
+
+3. Style Management
+Ajouter un style = dossier contenant :
+
+20–50 images
+
+prompt de référence
+
+Permet l'entraînement LoRA automatique via script + intégration directe dans ComfyUI
+
+4. Vidéo & Animation
+FFMPEG pour simple slideshow ou crossfade
+
+AnimateDiff ou Runway pour motion dynamique
+
+Kling AI pour animation fluide en silhouette
+
+Format par défaut : 16:9, 24fps, mp4
+
+Ajout de courtes transitions s'il n'y a pas de vidéo
+
+5. UI / SwarmUI
+Interface web (Flask ou SwarmUI modifié)
+
+Upload PDF/storyboard
+
+Sélection du style
+
+Affichage progressif des plans (step-by-step)
+
+Aperçu + bouton "générer vidéo"
+
+Ajout de modèles/LoRA/Set Style

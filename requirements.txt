@@ -1,0 +1,9 @@
+Flask
+pdfplumber
+werkzeug
+PyYAML
+python-dotenv
+requests
+pytesseract
+Pillow
+opencv-python
