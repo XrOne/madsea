@@ -29,6 +29,10 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'zip', 'png', 'jpg', 'jpeg'}
 
 app = Flask(__name__)
+
+# Configuration Tesseract
+app.config['TESSERACT_PATH'] = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+app.config['OCR_LANGUAGES'] = 'fra+eng'
 CORS(app)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 # 100 MB limit
@@ -52,6 +56,9 @@ try:
     from projects_api import project_bp
     from extraction_api import extraction_bp
     from comfyui_api import comfyui_bp
+    from comfyui_puppeteer_api import puppeteer_bp
+    from workflow_api import workflow_bp
+    from puppeteer_image_api import puppeteer_image_bp
 
     print("[Backend] Enregistrement du blueprint 'project_bp'")
     app.register_blueprint(project_bp, url_prefix='/api')
@@ -59,6 +66,12 @@ try:
     app.register_blueprint(extraction_bp, url_prefix='/api')
     print("[Backend] Enregistrement du blueprint 'comfyui_bp'")
     app.register_blueprint(comfyui_bp, url_prefix='/api')
+    print("[Backend] Enregistrement du blueprint 'puppeteer_bp'")
+    app.register_blueprint(puppeteer_bp, url_prefix='/api')
+    print("[Backend] Enregistrement du blueprint 'workflow_bp'")
+    app.register_blueprint(workflow_bp, url_prefix='/api')
+    print("[Backend] Enregistrement du blueprint 'puppeteer_image_bp'")
+    app.register_blueprint(puppeteer_image_bp, url_prefix='/api')
 
 except ImportError as e:
     print(f"[Backend] ERREUR CRITIQUE: Impossible d'importer les blueprints: {e}")

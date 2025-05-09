@@ -21,7 +21,8 @@ import logging
 import zipfile
 
 # Configuration du chemin vers l'exécutable Tesseract (à ajuster selon l'installation)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Configuration déplacée dans create_app()
+pytesseract.pytesseract.tesseract_cmd = current_app.config.get('TESSERACT_PATH', r'C:\Program Files\Tesseract-OCR\tesseract.exe')
 
 # Configuration
 UPLOAD_FOLDER = 'uploads' # Sous-dossier dans chaque projet
