@@ -18,6 +18,6 @@ def assemble_images_to_video(image_dir, output_video, fps=1):
     print(f'Vidéo créée: {output_video}')
 
 if __name__ == "__main__":
-    image_dir = r"i:\Madsea\outputs\nomenclature_test\202\AI-concept"
-    output_video = r"i:\Madsea\outputs\nomenclature_test\202\AI-concept\sequence_demo.mp4"
+    image_dir = r"i:\Madsea\outputs\nomenclature_test\666\AI-concept"
+    output_video = r"i:\Madsea\outputs\nomenclature_test\666\AI-concept\sequence_demo.mp4"
     assemble_images_to_video(image_dir, output_video, fps=1)

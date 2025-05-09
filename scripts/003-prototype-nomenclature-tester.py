@@ -55,7 +55,7 @@ def write_log_csv(log_path, rows):
 if __name__ == "__main__":
     import numpy as np
     base_dir = r"i:\Madsea\outputs\nomenclature_test"
-    episode_id = "202"
+    episode_id = "666"
     sequence_id = "0010"
     nb_plans = 70
     rows = generate_nomenclature_files(base_dir, episode_id, sequence_id, nb_plans)
