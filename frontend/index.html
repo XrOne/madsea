@@ -418,7 +418,7 @@
                 }, 200);
 
                 try {
-                    const response = await fetch('http://localhost:5000/api/extraction/upload_storyboard', { 
+                    const response = await fetch('/api/upload_storyboard_v3', { 
                         method: 'POST',
                         body: formData,
                     });
