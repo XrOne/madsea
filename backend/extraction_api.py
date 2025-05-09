@@ -249,7 +249,7 @@ def _process_pdf_advanced(pdf_temp_path, project_id, episode_id, sequence_number
     logger.info(f"Traitement avancé du PDF {original_filename} terminé.")
     return structured_data, full_text_content
 
-@extraction_bp.route('/upload_storyboard', methods=['POST'])
+@extraction_bp.route('/api/upload_storyboard_v3', methods=['POST'])
 def upload_storyboard_v3():
     logger.info(f"Requête reçue sur /upload_storyboard (v3) - {request.method}")
     if 'file' not in request.files:
