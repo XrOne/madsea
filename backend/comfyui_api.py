@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 import os
-from .comfyui_bridge import process_plan_with_comfyui
+from flask import Blueprint, request, jsonify
+from comfyui_bridge import process_plan_with_comfyui
 
 comfyui_bp = Blueprint('comfyui_bp', __name__)
 
