@@ -1,5 +1,4 @@
 import os
-import os
 import sys  # Ajout pour résoudre les imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -15,6 +14,7 @@ import subprocess
 import datetime
 import shutil
 import logging
+import pytesseract  # Ajout de l'import ici pour configuration globale
 
 # Intégration MCP ComfyUI
 try:
@@ -37,6 +37,10 @@ CORS(app)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 # 100 MB limit
 
+# Configuration globale de Tesseract pour tout le backend
+# Cette configuration est disponible hors contexte de requête
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
@@ -50,6 +54,11 @@ for handler in app.logger.handlers:
 @app.route('/test', methods=['GET'])
 def test():
     return jsonify({"message": "L'API fonctionne!"})
+
+# Configuration Tesseract dans le contexte d'application
+with app.app_context():
+    # Définition explicite de Tesseract avant l'import des modules
+    pytesseract.pytesseract.tesseract_cmd = app.config['TESSERACT_PATH']
 
 # --- Importation et Enregistrement des Blueprints (Corrigé) ---
 try:
