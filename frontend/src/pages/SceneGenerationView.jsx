@@ -3,6 +3,7 @@ import { AppContext } from '../context/AppContext';
 import SceneGrid from '../components/scene/SceneGrid';
 import StyleSelector from '../components/scene/StyleSelector';
 import AutosaveTimeline from '../components/project/AutosaveTimeline';
+import SceneToolbar from '../components/SceneToolbar';
 
 const SceneGenerationView = () => {
   const { activeProject, activeEpisode, addNotification } = useContext(AppContext);
@@ -294,6 +295,8 @@ const SceneGenerationView = () => {
           />
         </div>
       )}
+      
+      <SceneToolbar />
       
       <div>
         <SceneGrid />
