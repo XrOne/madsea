@@ -73,23 +73,55 @@ try {
     # Affichage du résultat
     $output | ForEach-Object { Write-Host $_ }
     
-    # Vérification des fichiers générés
+    # Inspection complète du dossier de sortie (tous les fichiers)
+    Write-Host "`n📁 Contenu du dossier de sortie ($OUTPUT_DIR):" -ForegroundColor Yellow
+    $allFiles = @(Get-ChildItem -Path $OUTPUT_DIR -File -ErrorAction SilentlyContinue)
+    
+    if ($allFiles.Count -eq 0) {
+        Write-Host "  Le dossier est vide" -ForegroundColor Red
+    } else {
+        $allFiles | ForEach-Object {
+            Write-Host "  • $($_.Name) ($($_.Length) octets - $($_.LastWriteTime))" -ForegroundColor Gray
+        }
+    }
+    
+    # Vérification avec pattern explicite
+    Write-Host "`n🔍 Recherche de fichiers extraits avec pattern: 'E${Episode}_SQ*_storyboard_v*.png'" -ForegroundColor Yellow
     $extractedFiles = @(Get-ChildItem -Path $OUTPUT_DIR -Filter "E${Episode}_SQ*_storyboard_v*.png" -ErrorAction SilentlyContinue)
     
     if ($extractedFiles.Count -gt 0) {
-        Write-Host "`n✅ Extraction réussie: $($extractedFiles.Count) fichiers générés" -ForegroundColor Green
+        Write-Host "✅ Extraction réussie: $($extractedFiles.Count) fichiers générés" -ForegroundColor Green
         Write-Host "Fichiers extraits (nomenclature stricte Madsea):" -ForegroundColor Cyan
         $extractedFiles | Select-Object -First 5 | ForEach-Object {
-            Write-Host "  • $($_.Name)" -ForegroundColor White
+            Write-Host "  • $($_.Name) ($($_.Length) octets)" -ForegroundColor White
         }
         if ($extractedFiles.Count -gt 5) {
             Write-Host "  • ... et $($extractedFiles.Count - 5) autres fichiers" -ForegroundColor White
         }
         
-        Write-Host "`nDossier de sortie: $OUTPUT_DIR" -ForegroundColor Yellow
+        # Ouvrir l'explorateur sur le dossier
+        Write-Host "`n📂 Ouverture du dossier de sortie..." -ForegroundColor Yellow
+        Start-Process "explorer.exe" -ArgumentList $OUTPUT_DIR
     }
     else {
-        Write-Host "`n❌ Aucun fichier généré dans $OUTPUT_DIR" -ForegroundColor Red
+        Write-Host "❌ Aucun fichier avec le pattern 'E${Episode}_SQ*_storyboard_v*.png' trouvé dans $OUTPUT_DIR" -ForegroundColor Red
+        
+        # Vérifions s'il y a des fichiers dans le dossier mais avec un pattern différent
+        $anyPngFiles = @(Get-ChildItem -Path $OUTPUT_DIR -Filter "*.png" -ErrorAction SilentlyContinue)
+        if ($anyPngFiles.Count -gt 0) {
+            Write-Host "⚠️ Cependant, il y a $($anyPngFiles.Count) fichiers PNG avec d'autres noms:" -ForegroundColor Yellow
+            $anyPngFiles | Select-Object -First 5 | ForEach-Object {
+                Write-Host "  • $($_.Name)" -ForegroundColor White
+            }
+        }
+        
+        # Vérifions les permissions du dossier
+        try {
+            $acl = Get-Acl -Path $OUTPUT_DIR
+            Write-Host "📋 Permissions du dossier: $($acl.AccessToString)" -ForegroundColor Gray
+        } catch {
+            Write-Host "❓ Impossible de vérifier les permissions du dossier: $_" -ForegroundColor Red
+        }
     }
 }
 catch {
