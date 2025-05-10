@@ -4,6 +4,7 @@ import SceneGrid from '../components/scene/SceneGrid';
 import StyleSelector from '../components/scene/StyleSelector';
 import AutosaveTimeline from '../components/project/AutosaveTimeline';
 import SceneToolbar from '../components/SceneToolbar';
+import LoRATrainer from '../components/LoRATrainer';
 
 const SceneGenerationView = () => {
   const { activeProject, activeEpisode, addNotification } = useContext(AppContext);
@@ -297,6 +298,7 @@ const SceneGenerationView = () => {
       )}
       
       <SceneToolbar />
+      <LoRATrainer />
       
       <div>
         <SceneGrid />

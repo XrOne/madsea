@@ -1,0 +1,45 @@
+{
+  "name": "LoRA Training Template",
+  "timestamp": "2025-05-10-18:15",
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImagesFromDirectory",
+      "pos": [100, 100],
+      "inputs": {
+        "directory": "{input_dir}"
+      }
+    },
+    {
+      "id": 2,
+      "type": "PreprocessImages",
+      "pos": [400, 100],
+      "inputs": {
+        "images": ["1", 0],
+        "resolution": [768, 768],
+        "crop_mode": "center"
+      }
+    },
+    {
+      "id": 3,
+      "type": "SDXLLoRATrainer",
+      "pos": [700, 100],
+      "inputs": {
+        "images": ["2", 0],
+        "base_model": "RealVisXL_V5.0.safetensors",
+        "lora_name": "{lora_name}",
+        "output_dir": "{output_dir}",
+        "epochs": "{epochs}",
+        "learning_rate": "{learning_rate}",
+        "batch_size": 4,
+        "save_every": 100,
+        "rank": 16,
+        "alpha": 8
+      }
+    }
+  ],
+  "metadata": {
+    "description": "Workflow générique pour l'entraînement de modèles LoRA avec ComfyUI",
+    "creator": "Madsea Project"
+  }
+}

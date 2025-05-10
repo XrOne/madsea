@@ -1,14 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import ConfigUploader from './ConfigUploader';
 import ImageTester from './ImageTester';
+import { AppContext } from '../context/AppContext';
 
 function SceneToolbar() {
   const [isAutoMode, setIsAutoMode] = useState(false);
+  const { addNotification } = useContext(AppContext);
 
   const handleToggleAutoMode = () => {
-    setIsAutoMode(!isAutoMode);
-    // TODO: Intégrer la logique pour basculer entre les endpoints manuels et automatiques
-    alert(`Mode ${!isAutoMode ? 'Automatique' : 'Manuel'} activé`);
+    const newMode = !isAutoMode;
+    setIsAutoMode(newMode);
+    
+    // Configuration des endpoints pour les deux modes
+    const endpoint = newMode 
+      ? 'http://localhost:5000/api/puppeteer/process' // Endpoint automatique (MCP Puppeteer)
+      : 'http://localhost:5000/api/comfyui/process_plans'; // Endpoint manuel
+    
+    // Mettre à jour la configuration globale ou le contexte
+    localStorage.setItem('madsea_generation_mode', newMode ? 'auto' : 'manual');
+    localStorage.setItem('madsea_generation_endpoint', endpoint);
+    
+    // Notification à l'utilisateur
+    addNotification(`Mode ${newMode ? 'Automatique' : 'Manuel'} activé`, 'info');
   };
 
   return (
@@ -16,7 +29,7 @@ function SceneToolbar() {
       <h2 className="text-xl font-bold text-gray-800 mb-2 lg:mb-0">Barre d'outils de scène</h2>
       <div className="flex flex-col lg:flex-row gap-4 items-center">
         <div className="flex items-center">
-          <label htmlFor="autoModeToggle" className="mr-2 text-gray-700 font-medium">
+          <label htmlFor="autoModeToggle" className="mr-2 text-gray-700 font-medium" title="Mode auto génère toutes les scènes en un clic avec MCP Puppeteer">
             Mode Automatique
           </label>
           <label className="relative inline-flex items-center cursor-pointer">
