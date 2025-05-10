@@ -14,8 +14,8 @@ param(
 # Fonction pour normaliser les chemins et garantir qu'ils fonctionnent avec PyMuPDF
 function NormalizePath {
     param([string]$Path)
-    # Assure des slashs avant dans le bon sens pour PyMuPDF
-    return $Path.Replace("\", "/")
+    # Ne touche pas aux espaces, convertit juste les backslashs
+    return $Path -replace '\\', '/'
 }
 
 # Fonction pour vérifier si un fichier existe et retourne son chemin absolu
@@ -73,6 +73,9 @@ Write-Host "  PDF: $NormalizedPdfPath" -ForegroundColor Cyan
 Write-Host "  Sortie: $NormalizedOutputDir" -ForegroundColor Cyan
 Write-Host "  Episode: $Episode" -ForegroundColor Cyan
 Write-Host "  Version: $Version" -ForegroundColor Cyan
+
+# Affichage du chemin transmis à Python pour traçabilité
+Write-Host "Appel Python avec : $NormalizedPdfPath" -ForegroundColor Yellow
 
 # Exécution avec UV (toujours utiliser des chemins absolus normalisés pour éviter les erreurs de chemin)
 Set-Location "i:\Madsea"
