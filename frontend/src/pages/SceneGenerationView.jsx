@@ -35,26 +35,26 @@ const SceneGenerationView = () => {
   };
 
   const handleGenerateAll = async () => {
-    if (!activeEpisode || !activeEpisode.scenes || activeEpisode.scenes.length === 0) {
-      addNotification('Aucune scène disponible pour la génération', 'warning');
-      return;
-    }
-
-    if (!currentStyle) {
-      addNotification('Veuillez sélectionner un style avant de générer', 'warning');
-      setShowStyleSelector(true);
-      return;
-    }
-
-    setGenerationStatus({
-      isGenerating: true,
-      progress: 0,
-      scenesCompleted: 0,
-      totalScenes: activeEpisode.scenes.length
-    });
-
     try {
-      addNotification('Démarrage de la génération de toutes les scènes...', 'info');
+      if (!activeEpisode || !activeEpisode.scenes || activeEpisode.scenes.length === 0) {
+        addNotification('Aucune scène disponible pour la génération', 'warning');
+        return;
+      }
+
+      if (!currentStyle) {
+        addNotification('Veuillez sélectionner un style avant de générer', 'warning');
+        setShowStyleSelector(true);
+        return;
+      }
+
+      setGenerationStatus({
+        isGenerating: true,
+        progress: 0,
+        scenesCompleted: 0,
+        totalScenes: activeEpisode.scenes.length
+      });
+
+      console.log('Tentative de génération de toutes les scènes...');
       
       // Appel API pour générer toutes les scènes
       const response = await fetch(`/api/episodes/${activeEpisode.id}/generate-all`, {
@@ -69,13 +69,23 @@ const SceneGenerationView = () => {
           seed: -1,
         }),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Erreur lors de la génération: ' + await response.text());
+        const errorData = await response.json();
+        console.error('Erreur backend:', errorData);
+        addNotification(errorData.error || 'Erreur lors de la génération', 'error');
+        setGenerationStatus({
+          isGenerating: false,
+          progress: 0,
+          scenesCompleted: 0,
+          totalScenes: activeEpisode.scenes.length
+        });
+        return;
       }
       
-      // La réponse devrait inclure un ID de tâche pour suivre la progression
       const { taskId } = await response.json();
+      
+      console.log('Génération en cours...');
       
       // Suivre la progression de la tâche de génération
       const progressInterval = setInterval(async () => {
@@ -129,14 +139,15 @@ const SceneGenerationView = () => {
         }
       }, 2000); // Vérifier toutes les 2 secondes
       
-    } catch (error) {
+    } catch (err) {
+      console.error('Erreur:', err);
+      addNotification('Erreur de communication avec le serveur', 'error');
       setGenerationStatus({
         isGenerating: false,
         progress: 0,
         scenesCompleted: 0,
         totalScenes: activeEpisode.scenes.length
       });
-      addNotification(`Erreur: ${error.message}`, 'error');
     }
   };
 
@@ -151,6 +162,8 @@ const SceneGenerationView = () => {
           return;
         }
       }
+      
+      console.log('Tentative de génération de la vidéo...');
       
       // Appel API pour générer la vidéo
       const response = await fetch(`/api/episodes/${activeEpisode.id}/generate-video`, {
@@ -167,17 +180,21 @@ const SceneGenerationView = () => {
           audioEnabled: false
         }),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Erreur lors de la génération vidéo: ' + await response.text());
+        const errorData = await response.json();
+        console.error('Erreur backend:', errorData);
+        addNotification(errorData.error || 'Erreur lors de la génération vidéo', 'error');
+        return;
       }
       
       const { taskId, estimatedTime } = await response.json();
       
       addNotification(`Génération de vidéo en cours (temps estimé: ${estimatedTime}s)`, 'info');
       
-    } catch (error) {
-      addNotification(`Erreur: ${error.message}`, 'error');
+    } catch (err) {
+      console.error('Erreur:', err);
+      addNotification('Erreur de communication avec le serveur', 'error');
     }
   };
 

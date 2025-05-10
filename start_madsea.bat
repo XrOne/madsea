@@ -10,7 +10,7 @@ echo.
 echo Ce script va demarrer :
 echo  1. Backend Flask avec bridge ComfyUI et MCP Puppeteer (localhost:5000)
 echo  2. ComfyUI (localhost:8188) avec GPU CUDA et modèles RealVisXL_V5.0
-echo  3. Frontend React/TailwindCSS (http://localhost:3000)
+echo  3. Frontend React/TailwindCSS (http://localhost:5173)
 echo.
 
 REM === Vérifications préalables ===
@@ -33,6 +33,31 @@ IF %ERRORLEVEL% NEQ 0 (
 REM Vérifier l'existence du dossier .venv dans le backend
 if not exist "I:\Madsea\backend\.venv" (
     echo [ERREUR] Environnement virtuel backend non trouvé. Veuillez exécuter "python -m venv backend\.venv" et installer les dépendances.
+    pause
+    exit /b 1
+)
+
+REM Vérifier Tesseract
+where tesseract >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo [ERREUR] Tesseract non trouvé. Installez-le via chocolatey: choco install tesseract
+    pause
+    exit /b 1
+)
+
+REM Vérifier Python dans le venv
+if not exist "I:\Madsea\backend\.venv\Scripts\python.exe" (
+    echo [ERREUR] Environnement virtuel Python non trouvé
+    echo Veuillez exécuter: python -m venv backend\.venv
+    pause
+    exit /b 1
+)
+
+REM Vérifier les dépendances
+"I:\Madsea\backend\.venv\Scripts\python.exe" -c "import pytesseract; print(f'Tesseract version: {pytesseract.get_tesseract_version()}')"
+if %ERRORLEVEL% neq 0 (
+    echo [ERREUR] Dépendances Python manquantes
+    echo Veuillez exécuter: backend\.venv\Scripts\pip install -r backend\requirements.txt
     pause
     exit /b 1
 )
@@ -72,14 +97,14 @@ timeout /t 8 /nobreak > nul
 
 REM Ouvrir les navigateurs aux deux interfaces
 echo Ouverture des interfaces...
-start "" "http://localhost:3000"
+start "" "http://localhost:5173"
 timeout /t 2 /nobreak > nul
 start "" "http://localhost:8188"
 
 echo.
 echo ===== SERVEURS DEMARRES =====
 echo.
-echo Frontend React : http://localhost:3000   (interface principale)
+echo Frontend React : http://localhost:5173   (interface principale)
 echo Backend Flask  : http://localhost:5000   (API)
 echo ComfyUI        : http://localhost:8188   (interface directe)
 echo.

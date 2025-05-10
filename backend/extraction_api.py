@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import logging
 import zipfile
+import re
 
 # Configuration par défaut de Tesseract - sera configuré dynamiquement dans les fonctions
 DEFAULT_TESSERACT_PATH = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -251,6 +252,30 @@ def _process_pdf_advanced(pdf_temp_path, project_id, episode_id, sequence_number
 
 @extraction_bp.route('/api/upload_storyboard_v3', methods=['POST'])
 def upload_storyboard_v3():
+    # Vérification des dossiers critiques
+    required_dirs = [
+        current_app.config.get('TEMP_DIR', 'temp'),
+        current_app.config.get('UPLOAD_FOLDER', 'uploads'),
+        NOMENCLATURE_TEST_OUTPUT_BASE
+    ]
+    
+    for dir_path in required_dirs:
+        try:
+            os.makedirs(dir_path, exist_ok=True)
+            if not os.access(dir_path, os.W_OK):
+                logger.error(f"Permissions manquantes pour : {dir_path}")
+                return jsonify({"error": "Erreur de configuration serveur"}), 500
+        except Exception as e:
+            logger.error(f"Erreur création dossier {dir_path}: {str(e)}")
+            return jsonify({"error": "Erreur de configuration serveur"}), 500
+
+    # Vérification Tesseract
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception as e:
+        logger.error(f"Tesseract non disponible: {str(e)}")
+        return jsonify({"error": "OCR non configuré"}), 500
+
     logger.info(f"Requête reçue sur /upload_storyboard (v3) - {request.method}")
     if 'file' not in request.files:
         logger.warning("Aucun fichier trouvé dans la requête")
