@@ -30,8 +30,9 @@ ALLOWED_EXTENSIONS = {'pdf', 'zip', 'png', 'jpg', 'jpeg'}
 
 app = Flask(__name__)
 
-# Configuration Tesseract
-app.config['TESSERACT_PATH'] = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Configuration Tesseract - Chemin absolu forcé
+tesseract_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+app.config['TESSERACT_PATH'] = tesseract_path
 app.config['OCR_LANGUAGES'] = 'fra+eng'
 CORS(app)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -39,7 +40,8 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 # 100 MB limit
 
 # Configuration globale de Tesseract pour tout le backend
 # Cette configuration est disponible hors contexte de requête
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = tesseract_path
+print(f"[Backend] Tesseract configuré: {tesseract_path}")
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)

@@ -42,6 +42,21 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _process_page_content_advanced(page, page_num, project_id, episode_id, sequence_number, output_path, doc, original_filename_base, image_index_offset):
+    # Vérifier et configurer Tesseract au début de chaque traitement de page
+    try:
+        # Utiliser la configuration globale définie dans app.py
+        # Si besoin, on peut aussi la redéfinir ici en cas d'erreur
+        if not pytesseract.pytesseract.tesseract_cmd or not os.path.exists(pytesseract.pytesseract.tesseract_cmd):
+            # Fallback sur le chemin standard si la config globale échoue
+            logger.warning("Configuration Tesseract non trouvée, utilisation du chemin standard")
+            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        
+        # Vérification optionnelle que Tesseract fonctionne
+        # tesseract_version = pytesseract.get_tesseract_version()
+        # logger.info(f"Tesseract version: {tesseract_version}")
+    except Exception as e:
+        logger.error(f"Erreur configuration Tesseract: {e}")
+        
     page_data = {
         'page_number': page_num + 1,
         'images': [],
