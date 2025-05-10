@@ -1,0 +1,15 @@
+{
+    "tesseract_paths": [
+        "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+        "C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe", 
+        "%MADSEA_HOME%\\ocr\\tesseract.exe",
+        "%APPDATA%\\Madsea\\tools\\tesseract.exe"
+    ],
+    "embedded_mode": false,
+    "languages": ["fra", "eng"],
+    "default_lang": "fra",
+    "options": {
+        "config": "",
+        "dpi": 300
+    }
+}

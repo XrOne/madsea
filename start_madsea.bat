@@ -37,12 +37,13 @@ if not exist "I:\Madsea\backend\.venv" (
     exit /b 1
 )
 
-REM Vérifier Tesseract
-where tesseract >nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo [ERREUR] Tesseract non trouvé. Installez-le via chocolatey: choco install tesseract
+REM Vérifier Tesseract (même s'il n'est pas dans le PATH)
+if not exist "C:\Program Files\Tesseract-OCR\tesseract.exe" (
+    echo [ERREUR] Tesseract non trouvé. Exécutez l'installateur i:\Madsea\install\tesseract-ocr-w64-setup-5.5.0.20241111.exe
     pause
     exit /b 1
+) else (
+    echo [INFO] Tesseract trouvé à C:\Program Files\Tesseract-OCR\tesseract.exe
 )
 
 REM Vérifier Python dans le venv

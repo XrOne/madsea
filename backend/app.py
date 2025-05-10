@@ -30,8 +30,50 @@ ALLOWED_EXTENSIONS = {'pdf', 'zip', 'png', 'jpg', 'jpeg'}
 
 app = Flask(__name__)
 
-# Configuration Tesseract - Chemin absolu forcé
-tesseract_path = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Configuration Tesseract - Recherche automatique du binaire avec priorité à l'installation standard
+def find_tesseract():
+    # Installation standard (prioritaire) - ajouté '/bin' car dans les versions récentes tesseract.exe est dans le sous-dossier bin
+    standard_paths = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',  # Installation standard 5.0.x
+        r'C:\Program Files\Tesseract-OCR\bin\tesseract.exe',  # Installation standard 5.3.x+
+    ]
+    
+    # Vérification des chemins standards d'abord (les plus probables)
+    for path in standard_paths:
+        if os.path.exists(path):
+            print(f"[Backend] Tesseract trouvé à: {path}")
+            return path
+    
+    # Autres emplacements possibles
+    fallback_paths = [
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',  # 32-bit sur système 64-bit
+        r'C:\Program Files (x86)\Tesseract-OCR\bin\tesseract.exe',  # 32-bit avec bin
+        r'i:\Madsea\ocr\tesseract.exe',  # Installation locale au projet
+    ]
+    
+    # Essayer les chemins alternatifs
+    for path in fallback_paths:
+        if os.path.exists(path):
+            print(f"[Backend] Tesseract trouvé à: {path}")
+            return path
+    
+    # Essai via PATH (least likely to work but worth trying)
+    try:
+        from shutil import which
+        system_path = which('tesseract')
+        if system_path:
+            print(f"[Backend] Tesseract trouvé dans le PATH: {system_path}")
+            return system_path
+    except Exception as e:
+        pass
+    
+    # Par défaut, on retourne un chemin standard même s'il n'existe pas
+    default_path = r'C:\Program Files\Tesseract-OCR\bin\tesseract.exe'
+    print(f"[Backend] AVERTISSEMENT: Tesseract non trouvé, utilisation du chemin par défaut: {default_path}")
+    return default_path
+
+# Trouver Tesseract et configurer l'application
+tesseract_path = find_tesseract()
 app.config['TESSERACT_PATH'] = tesseract_path
 app.config['OCR_LANGUAGES'] = 'fra+eng'
 CORS(app)
@@ -39,9 +81,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 # 100 MB limit
 
 # Configuration globale de Tesseract pour tout le backend
-# Cette configuration est disponible hors contexte de requête
 pytesseract.pytesseract.tesseract_cmd = tesseract_path
-print(f"[Backend] Tesseract configuré: {tesseract_path}")
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)

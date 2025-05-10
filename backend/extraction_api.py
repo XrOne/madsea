@@ -21,6 +21,9 @@ import logging
 import zipfile
 import re
 
+# Import du gestionnaire OCR centralisé
+from services.ocr_manager import get_ocr_manager, extract_text_from_image
+
 # Configuration par défaut de Tesseract - sera configuré dynamiquement dans les fonctions
 DEFAULT_TESSERACT_PATH = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
@@ -42,20 +45,16 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def _process_page_content_advanced(page, page_num, project_id, episode_id, sequence_number, output_path, doc, original_filename_base, image_index_offset):
-    # Vérifier et configurer Tesseract au début de chaque traitement de page
+    # Utilisation du gestionnaire OCR centralisé (portable entre organisations)
     try:
-        # Utiliser la configuration globale définie dans app.py
-        # Si besoin, on peut aussi la redéfinir ici en cas d'erreur
-        if not pytesseract.pytesseract.tesseract_cmd or not os.path.exists(pytesseract.pytesseract.tesseract_cmd):
-            # Fallback sur le chemin standard si la config globale échoue
-            logger.warning("Configuration Tesseract non trouvée, utilisation du chemin standard")
-            pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        # Obtenir le gestionnaire OCR qui gérera automatiquement la localisation de Tesseract
+        ocr_manager = get_ocr_manager()
         
-        # Vérification optionnelle que Tesseract fonctionne
-        # tesseract_version = pytesseract.get_tesseract_version()
-        # logger.info(f"Tesseract version: {tesseract_version}")
+        # Log des informations sur Tesseract pour debug
+        tesseract_info = ocr_manager.get_tesseract_info()
+        logger.info(f"OCR Manager: Tesseract {tesseract_info['version']} ({tesseract_info['status']}) - Chemin: {tesseract_info['path']}")
     except Exception as e:
-        logger.error(f"Erreur configuration Tesseract: {e}")
+        logger.error(f"Erreur initialisation OCR Manager: {e}")
         
     page_data = {
         'page_number': page_num + 1,
