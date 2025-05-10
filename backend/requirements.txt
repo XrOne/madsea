@@ -1,7 +1,24 @@
+# Backend principal
 Flask>=2.0
 Flask-Cors>=3.0
-werkzeug>=2.0 # Pour secure_filename
-PyMuPDF>=1.18 # Pour l'extraction PDF
-Pillow>=9.0 # Pour la manipulation d'images avec pytesseract
-pytesseract>=0.3 # Pour l'interface OCR avec Tesseract
+werkzeug>=2.0
+
+# Traitement PDF et images
+PyMuPDF>=1.18
+Pillow>=9.0
+pytesseract>=0.3
 opencv-python-headless
+
+# Intégration ComfyUI
+comfy-mcp-server
+websocket-client>=1.0
+requests>=2.25
+numpy>=1.19
+
+# Traitement de données
+jsonschema>=3.2
+pyyaml>=5.1
+
+# Utilitaires
+tqdm>=4.62
+python-dotenv>=0.19
