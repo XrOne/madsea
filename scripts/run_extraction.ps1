@@ -1,5 +1,5 @@
 # PowerShell wrapper pour exécuter l'extraction via UV
-# Compatible avec la nomenclature stricte Madsea
+# Compatible avec la nomenclature stricte Madsea et gestion des chemins Windows sécurisée
 param(
     [Parameter(Mandatory=$true)]
     [string]$PdfPath,
@@ -11,40 +11,72 @@ param(
     [int]$Version = 1
 )
 
+# Fonction pour normaliser les chemins et garantir qu'ils fonctionnent avec PyMuPDF
+function NormalizePath {
+    param([string]$Path)
+    # Assure des slashs avant dans le bon sens pour PyMuPDF
+    return $Path.Replace("\", "/")
+}
+
+# Fonction pour vérifier si un fichier existe et retourne son chemin absolu
+function ValidateFile {
+    param([string]$Path)
+    
+    # Vérifier si c'est un chemin absolu
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        if (Test-Path $Path) {
+            return $Path
+        }
+    } else {
+        # Si c'est un chemin relatif, essayer plusieurs bases
+        $bases = @(
+            (Get-Location),
+            "i:\Madsea"
+        )
+        
+        foreach ($base in $bases) {
+            $fullPath = Join-Path $base $Path
+            if (Test-Path $fullPath) {
+                return $fullPath
+            }
+        }
+    }
+    
+    Write-Host "ERREUR: Fichier non trouvé: $Path" -ForegroundColor Red
+    Write-Host "Veuillez vérifier que le fichier existe et que le chemin est correct." -ForegroundColor Yellow
+    exit 1
+}
+
 # Création du répertoire de sortie si nécessaire
 if (-not (Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir -Force
-    Write-Host "Répertoire de sortie créé: $OutputDir"
+    Write-Host "Répertoire de sortie créé: $OutputDir" -ForegroundColor Green
 }
 
-# Chemin relatif du PDF pour UV
-$RelativePdfPath = $PdfPath
+# Valider et obtenir le chemin absolu du PDF
+$AbsolutePdfPath = ValidateFile $PdfPath
+Write-Host "PDF trouvé: $AbsolutePdfPath" -ForegroundColor Green
 
-# Si le chemin est absolu, le convertir en relatif par rapport à Madsea
-if ([System.IO.Path]::IsPathRooted($PdfPath)) {
-    if ($PdfPath.StartsWith("i:\Madsea\")) {
-        $RelativePdfPath = $PdfPath.Substring("i:\Madsea\".Length)
-    }
+# Obtenir le chemin absolu du dossier de sortie
+$AbsoluteOutputDir = $OutputDir
+if (-not [System.IO.Path]::IsPathRooted($OutputDir)) {
+    $AbsoluteOutputDir = Join-Path (Get-Location) $OutputDir
 }
 
-# Chemin relatif du dossier de sortie
-$RelativeOutputDir = $OutputDir
-if ([System.IO.Path]::IsPathRooted($OutputDir)) {
-    if ($OutputDir.StartsWith("i:\Madsea\")) {
-        $RelativeOutputDir = $OutputDir.Substring("i:\Madsea\".Length)
-    }
-}
+# Normaliser les chemins pour PyMuPDF (utiliser des forward slashes)
+$NormalizedPdfPath = NormalizePath $AbsolutePdfPath
+$NormalizedOutputDir = NormalizePath $AbsoluteOutputDir
 
 # Affichage des paramètres
 Write-Host "Extraction avec nomenclature stricte Madsea:" -ForegroundColor Green
-Write-Host "  PDF: $RelativePdfPath" -ForegroundColor Cyan
-Write-Host "  Sortie: $RelativeOutputDir" -ForegroundColor Cyan
+Write-Host "  PDF: $NormalizedPdfPath" -ForegroundColor Cyan
+Write-Host "  Sortie: $NormalizedOutputDir" -ForegroundColor Cyan
 Write-Host "  Episode: $Episode" -ForegroundColor Cyan
 Write-Host "  Version: $Version" -ForegroundColor Cyan
 
-# Exécution avec UV
+# Exécution avec UV (toujours utiliser des chemins absolus normalisés pour éviter les erreurs de chemin)
 Set-Location "i:\Madsea"
-uv run scripts/test_extraction.py "$RelativePdfPath" "$RelativeOutputDir" "$Episode" "$Version"
+uv run scripts/test_extraction.py "$NormalizedPdfPath" "$NormalizedOutputDir" "$Episode" "$Version"
 
 # Vérification et affichage des résultats
 $ExtractedFiles = Get-ChildItem -Path $OutputDir -Filter "E${Episode}_SQ*_storyboard_v*.png"
