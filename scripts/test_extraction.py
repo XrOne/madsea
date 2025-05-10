@@ -21,15 +21,32 @@ def ensure_dir(directory):
         raise
 
 def validate_pdf_path(pdf_path):
-    """Valide et normalise le chemin du PDF"""
+    """Valide et normalise le chemin du PDF avec gestion d'erreur améliorée"""
     # Conversion en Path pour gestion cross-platform
     path = Path(pdf_path)
     
-    # Vérification que le fichier existe
+    # Vérification que le fichier existe avec diagnostic amélioré
     if not path.exists():
         logger.error(f"ERREUR: Le fichier PDF n'existe pas: {pdf_path}")
         logger.error(f"Chemin absolu tenté: {path.absolute()}")
         logger.error(f"Chemin courant: {Path.cwd()}")
+        
+        # Essayons de trouver des PDF similaires dans le dossier parent
+        try:
+            parent_dir = path.parent
+            if parent_dir.exists():
+                pdf_files = list(parent_dir.glob("*.pdf"))
+                if pdf_files:
+                    pdf_names = "\n  - ".join([str(p.name) for p in pdf_files])
+                    logger.warning(f"PDF trouvés dans {parent_dir}:\n  - {pdf_names}")
+                    
+                    # Si un seul PDF est trouvé, utilisons-le automatiquement
+                    if len(pdf_files) == 1:
+                        logger.info(f"Utilisation automatique du seul PDF trouvé: {pdf_files[0]}")
+                        return str(pdf_files[0].absolute())
+        except Exception as e:
+            logger.error(f"Erreur lors de la recherche de PDF alternatifs: {e}")
+        
         raise FileNotFoundError(f"PDF non trouvé: {pdf_path}")
     
     # Retour du chemin absolu normalisé
